@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raycasting: Interactive Explainer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Ray<em>casting</em></h1>
+  <p class="subtitle">Four interactive stops covering the mathematics behind classic raycasting engines - from a single ray-wall intersection to a full corrected 3D projection. Every formula updates live as you step through and tweak the controls.</p>
+</header>
+<div class="main">
+
+  <!-- Formula strip -->
+  <div class="fstrip">
+    <div class="fmain" id="globalFormula">
+      <span class="ac">P(t)</span> = <span class="ac">O</span> + t·<span class="gd">D</span> &nbsp;→&nbsp; DDA grid walk &nbsp;→&nbsp; <span class="or">correct for fisheye</span> &nbsp;→&nbsp; <span class="gn">height = k / distance</span>
+    </div>
+    <div class="fleg">
+      <div class="fl"><div class="fldot" style="background:var(--accent)"></div>O origin / position</div>
+      <div class="fl"><div class="fldot" style="background:var(--gold)"></div>D direction / angle θ</div>
+      <div class="fl"><div class="fldot" style="background:var(--purple)"></div>wall / grid cell</div>
+      <div class="fl"><div class="fldot" style="background:var(--green)"></div>distance t</div>
+      <div class="fl"><div class="fldot" style="background:var(--orange)"></div>fisheye correction</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchMode('vector')">📍 Vector Basics</button>
+    <button class="tab-btn" onclick="switchMode('dda')">📐 DDA Algorithm</button>
+    <button class="tab-btn" onclick="switchMode('multiray')">🗺️ Multi-Ray Casting</button>
+    <button class="tab-btn" onclick="switchMode('projection')">🧊 3D Projection</button>
+    <span class="kbd-hint"><kbd>,</kbd> Prev &nbsp;<kbd>.</kbd> Next &nbsp;<kbd>Space</kbd> Play</span>
+  </div>
+
+  <!-- Scenario controls -->
+  <div class="sc active" id="sc-vector">
+    <div class="sc-row">
+      <div class="sc-item"><label>Wall Orientation</label>
+        <select id="vec-wall" onchange="resetAll()">
+          <option value="vertical">Vertical Wall</option>
+          <option value="horizontal">Horizontal Wall</option>
+          <option value="diagonal">Diagonal Wall</option>
+        </select>
+      </div>
+      <div class="sc-item"><label>Ray Angle θ</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="vec-angle" min="0" max="85" value="25" oninput="sv('vec-av',this.value+'°')">
+          <span class="sc-val" id="vec-av">25°</span>
+        </div>
+      </div>
+      <button class="btn primary" onclick="resetAll()">Apply</button>
+    </div>
+  </div>
+
+  <div class="sc" id="sc-dda">
+    <div class="sc-row">
+      <div class="sc-item"><label>Map</label>
+        <select id="dda-map" onchange="resetAll()">
+          <option value="simple">Simple Room</option>
+          <option value="maze">Maze</option>
+        </select>
+      </div>
+      <div class="sc-item"><label>Ray Angle θ</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="dda-angle" min="0" max="359" value="35" oninput="sv('dda-av',this.value+'°')">
+          <span class="sc-val" id="dda-av">35°</span>
+        </div>
+      </div>
+      <button class="btn primary" onclick="resetAll()">Apply</button>
+    </div>
+  </div>
+
+  <div class="sc" id="sc-multiray">
+    <div class="sc-row">
+      <div class="sc-item"><label>Map</label>
+        <select id="mr-map" onchange="resetAll()">
+          <option value="simple">Simple Room</option>
+          <option value="maze">Maze</option>
+        </select>
+      </div>
+      <div class="sc-item"><label>Facing Angle</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="mr-angle" min="0" max="359" value="15" oninput="sv('mr-av',this.value+'°')">
+          <span class="sc-val" id="mr-av">15°</span>
+        </div>
+      </div>
+      <div class="sc-item"><label>Field of View</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="mr-fov" min="20" max="100" value="60" oninput="sv('mr-fv',this.value+'°')">
+          <span class="sc-val" id="mr-fv">60°</span>
+        </div>
+      </div>
+      <div class="sc-item"><label>Ray Count</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="mr-rays" min="6" max="36" value="18" oninput="sv('mr-rv',this.value)">
+          <span class="sc-val" id="mr-rv">18</span>
+        </div>
+      </div>
+      <button class="btn primary" onclick="resetAll()">Apply</button>
+    </div>
+  </div>
+
+  <div class="sc" id="sc-projection">
+    <div class="sc-row">
+      <div class="sc-item"><label>Field of View</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="proj-fov" min="20" max="100" value="60" oninput="sv('proj-fv',this.value+'°')">
+          <span class="sc-val" id="proj-fv">60°</span>
+        </div>
+      </div>
+      <div class="sc-item"><label>Wall Distance D₀</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="proj-dist" min="2" max="8" value="4" oninput="sv('proj-dv',this.value)">
+          <span class="sc-val" id="proj-dv">4</span>
+        </div>
+      </div>
+      <div class="sc-item"><label>Screen Columns</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="proj-cols" min="9" max="33" step="2" value="21" oninput="sv('proj-cv',this.value)">
+          <span class="sc-val" id="proj-cv">21</span>
+        </div>
+      </div>
+      <button class="btn primary" onclick="resetAll()">Apply</button>
+    </div>
+  </div>
+
+  <!-- Step header -->
+  <div class="step-header">
+    <div class="step-badge" id="stepBadge">Step 0</div>
+    <div class="step-title" id="stepTitle">Introduction</div>
+    <div class="dots" id="dotsWrap"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn" id="btnPrev" onclick="prevStep()" disabled>◀ Prev</button>
+    <button class="btn primary" id="btnPlay" onclick="togglePlay()">▶ Play</button>
+    <button class="btn" id="btnNext" onclick="nextStep()">Next ▶</button>
+    <button class="btn danger" onclick="resetAll()">↺ Reset</button>
+  </div>
+
+  <!-- Formula card -->
+  <div class="fstrip" style="margin-bottom:12px">
+    <div class="fmain" id="formulaLine"></div>
+  </div>
+
+  <!-- Explain card -->
+  <div class="explain-card" id="explainCard">Loading...</div>
+
+  <!-- Chips -->
+  <div class="chips" id="chipsRow"></div>
+
+  <!-- Scene / charts area (injected per mode) -->
+  <div id="chartsArea"></div>
+
+  <!-- Step history table -->
+  <div class="table-wrap">
+    <div class="table-head-bar"><span>Step History</span><span id="tableLabel"></span></div>
+    <div class="table-scroll-wrap">
+      <table><thead id="tHead"></thead><tbody id="tBody"></tbody></table>
+    </div>
+  </div>
+
+</div><!-- .main -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="data-builders.js"></script><!-- Pure raycasting math, no DOM -->
+<script src="render.js"></script>      <!-- Canvas scenes + Chart.js wrapper -->
+<script src="ui.js"></script>          <!-- Globals, navigation, playback, init -->
+</body>
+</html>
