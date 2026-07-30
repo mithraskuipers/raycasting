@@ -7,7 +7,7 @@
 
 let mode = 'vector', cur = 0, total = 0, stepsData = [], playing = false, playTimer = null;
 const charts = {};
-const MODES = ['vector', 'dda', 'multiray', 'projection'];
+const MODES = ['vector', 'dda', 'multiray', 'projection', 'walk'];
 
 /* ------------------------------------------------
    DOM utilities
@@ -157,11 +157,20 @@ function stopPlay() {
    Mode switching & full reset
    ------------------------------------------------ */
 function switchMode(m) {
+  if (mode === 'walk' && m !== 'walk') stopWalkMode();
   mode = m;
   document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', MODES[i] === m));
   document.querySelectorAll('.sc').forEach(el => el.classList.remove('active'));
   document.getElementById('sc-' + m).classList.add('active');
-  resetAll();
+  toggleModeUI(m === 'walk');
+  if (m === 'walk') startWalkMode();
+  else resetAll();
+}
+
+/* Show the step-by-step engine UI, or the live Walk Mode canvas, never both */
+function toggleModeUI(isWalk) {
+  document.getElementById('stepModeUI').style.display = isWalk ? 'none' : '';
+  document.getElementById('walkWrap').style.display = isWalk ? '' : 'none';
 }
 
 function resetAll() {
@@ -184,11 +193,90 @@ function resetAll() {
    Keyboard shortcuts
    ------------------------------------------------ */
 document.addEventListener('keydown', e => {
+  if (mode === 'walk') return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.key === '.') nextStep();
   if (e.key === ',') prevStep();
   if (e.key === ' ') { e.preventDefault(); togglePlay(); }
 });
+
+/* ================================================
+   WALK MODE - live first-person raycasting.
+   Reuses castRayDDA() from data-builders.js every
+   animation frame instead of pre-baking steps.
+   ================================================ */
+const walkKeys = {};
+let walkState = null, walkRAF = null, walkLastT = 0;
+
+function startWalkMode() {
+  stopWalkMode();
+  const mapKey = gv('walk-map');
+  const map = MAPS[mapKey] || MAPS.simple;
+  walkState = { map, mapKey, x: 1.5, y: 1.5, angle: Math.PI / 4, fov: gc('walk-fov') * Math.PI / 180 };
+  // Drop the player on the first open floor tile so every map is walkable from the start
+  findSpawn:
+  for (let ry = 1; ry < map.length - 1; ry++) {
+    for (let rx = 1; rx < map[0].length - 1; rx++) {
+      if (map[ry][rx] === '.') { walkState.x = rx + 0.5; walkState.y = ry + 0.5; break findSpawn; }
+    }
+  }
+  walkLastT = performance.now();
+  walkLoop(walkLastT);
+  const focus = document.getElementById('w-focus');
+  if (focus) focus.focus();
+}
+
+function stopWalkMode() {
+  if (walkRAF) cancelAnimationFrame(walkRAF);
+  walkRAF = null;
+  for (const k in walkKeys) walkKeys[k] = false;
+}
+
+function walkFovChanged() { if (walkState) walkState.fov = gc('walk-fov') * Math.PI / 180; }
+function walkMapChanged() { startWalkMode(); }
+
+/* Small square collision box around the player so we can't clip through wall corners */
+function walkBlocked(map, x, y) {
+  const r = 0.2;
+  const pts = [[x - r, y - r], [x + r, y - r], [x - r, y + r], [x + r, y + r]];
+  for (const [cx, cy] of pts) {
+    const mx = Math.floor(cx), my = Math.floor(cy);
+    if (my < 0 || my >= map.length || mx < 0 || mx >= map[0].length) return true;
+    if (map[my][mx] === '#') return true;
+  }
+  return false;
+}
+
+function walkLoop(t) {
+  walkRAF = requestAnimationFrame(walkLoop);
+  if (!walkState) return;
+  const now = t || performance.now();
+  const dt = Math.min(0.05, (now - walkLastT) / 1000);
+  walkLastT = now;
+
+  const moveSpeed = 2.6, turnSpeed = 2.6;
+  let { x, y, angle, map } = walkState;
+  if (walkKeys.ArrowLeft) angle -= turnSpeed * dt;
+  if (walkKeys.ArrowRight) angle += turnSpeed * dt;
+  let dx = 0, dy = 0;
+  if (walkKeys.ArrowUp) { dx += Math.cos(angle) * moveSpeed * dt; dy += Math.sin(angle) * moveSpeed * dt; }
+  if (walkKeys.ArrowDown) { dx -= Math.cos(angle) * moveSpeed * dt; dy -= Math.sin(angle) * moveSpeed * dt; }
+  if (dx || dy) {
+    if (!walkBlocked(map, x + dx, y)) x += dx;      // slide along walls on each axis
+    if (!walkBlocked(map, x, y + dy)) y += dy;      // independently rather than stopping dead
+  }
+  walkState.x = x; walkState.y = y; walkState.angle = angle;
+  renderWalkScene(walkState);
+}
+
+window.addEventListener('keydown', e => {
+  if (mode !== 'walk') return;
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    walkKeys[e.key] = true;
+  }
+});
+window.addEventListener('keyup', e => { walkKeys[e.key] = false; });
 
 /* ------------------------------------------------
    Keep canvases crisp on resize

@@ -33,6 +33,7 @@
     <button class="tab-btn" onclick="switchMode('dda')">📐 DDA Algorithm</button>
     <button class="tab-btn" onclick="switchMode('multiray')">🗺️ Multi-Ray Casting</button>
     <button class="tab-btn" onclick="switchMode('projection')">🧊 3D Projection</button>
+    <button class="tab-btn" onclick="switchMode('walk')">🚶 Walk Mode</button>
     <span class="kbd-hint"><kbd>,</kbd> Prev &nbsp;<kbd>.</kbd> Next &nbsp;<kbd>Space</kbd> Play</span>
   </div>
 
@@ -128,6 +129,37 @@
     </div>
   </div>
 
+  <div class="sc" id="sc-walk">
+    <div class="sc-row">
+      <div class="sc-item"><label>Map</label>
+        <select id="walk-map" onchange="walkMapChanged()">
+          <option value="simple">Simple Room</option>
+          <option value="maze">Maze</option>
+        </select>
+      </div>
+      <div class="sc-item"><label>Field of View</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="range" id="walk-fov" min="50" max="100" value="66" oninput="sv('w-fv',this.value+'°');walkFovChanged()">
+          <span class="sc-val" id="w-fv">66°</span>
+        </div>
+      </div>
+      <span style="font-size:12px;color:var(--text3)">Click the view below, then use <kbd>↑</kbd><kbd>↓</kbd> to move and <kbd>←</kbd><kbd>→</kbd> to turn.</span>
+    </div>
+  </div>
+
+  <!-- Walk mode: live first-person 3D raycasting -->
+  <div id="walkWrap" style="display:none">
+    <div class="walk-stage" id="w-focus" tabindex="0">
+      <canvas id="w-3d"></canvas>
+      <canvas id="w-map"></canvas>
+      <div class="walk-hint">This is what the DDA ray casts from every other tab look like rendered live, one vertical strip per ray, corrected for fisheye.</div>
+      <div class="walk-controls-hint">↑ forward &nbsp; ↓ back &nbsp; ← turn left &nbsp; → turn right</div>
+    </div>
+  </div>
+
+  <!-- Step-by-step engine UI (hidden while Walk Mode is active) -->
+  <div id="stepModeUI">
+
   <!-- Step header -->
   <div class="step-header">
     <div class="step-badge" id="stepBadge">Step 0</div>
@@ -164,6 +196,8 @@
       <table><thead id="tHead"></thead><tbody id="tBody"></tbody></table>
     </div>
   </div>
+
+  </div><!-- #stepModeUI -->
 
 </div><!-- .main -->
 

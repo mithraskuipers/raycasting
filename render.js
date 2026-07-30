@@ -363,3 +363,62 @@ function renderProjectionScene(s) {
     });
   }
 }
+
+/* ------------------------------------------------
+   WALK MODE - live first-person raycasting.
+   Casts one DDA ray per screen column every frame,
+   corrects each for fisheye against the view axis
+   (same cos(δ) fix taught in the Projection tab),
+   and draws it as a shaded vertical strip.
+   ------------------------------------------------ */
+function renderWalkScene(ws) {
+  renderWalk3D(ws);
+  renderWalkMinimap(ws);
+}
+
+function renderWalk3D(ws) {
+  const p = prepCanvas('w-3d'); if (!p) return;
+  const { ctx, w, h } = p;
+
+  // Ceiling / floor gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, h / 2);
+  skyGrad.addColorStop(0, '#0a1220'); skyGrad.addColorStop(1, '#0d1c2c');
+  ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, w, h / 2);
+  const floorGrad = ctx.createLinearGradient(0, h / 2, 0, h);
+  floorGrad.addColorStop(0, '#101c14'); floorGrad.addColorStop(1, '#070d0a');
+  ctx.fillStyle = floorGrad; ctx.fillRect(0, h / 2, w, h / 2);
+
+  const numCols = Math.max(90, Math.min(280, Math.floor(w / 3)));
+  const colW = w / numCols;
+  for (let i = 0; i < numCols; i++) {
+    const rayAngle = ws.angle - ws.fov / 2 + (numCols > 1 ? (i / (numCols - 1)) * ws.fov : 0);
+    const res = castRayDDA(ws.map, ws.x, ws.y, rayAngle);
+    // Correct fisheye: project the raw ray length back onto the view axis
+    const dist = Math.max(0.08, res.perpDist * Math.cos(rayAngle - ws.angle));
+    const lineH = Math.min(h * 2.2, h / dist);
+    const fog = Math.max(0.12, 1 - dist / 13);
+    const base = res.side === 0 ? [0, 212, 255] : [0, 152, 196];
+    ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${fog.toFixed(2)})`;
+    ctx.fillRect(i * colW, (h - lineH) / 2, colW + 1, lineH);
+  }
+}
+
+function renderWalkMinimap(ws) {
+  const p = prepCanvas('w-map'); if (!p) return;
+  const { ctx, w, h } = p;
+  clearScene(ctx, w, h);
+  const g = fitGrid(ws.map, w, h, 6);
+  drawGridCells(ctx, ws.map, g);
+
+  const half = ws.fov / 2, reach = 6;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(g.ox + ws.x * g.cell, g.oy + ws.y * g.cell);
+  ctx.lineTo(g.ox + (ws.x + Math.cos(ws.angle - half) * reach) * g.cell, g.oy + (ws.y + Math.sin(ws.angle - half) * reach) * g.cell);
+  ctx.lineTo(g.ox + (ws.x + Math.cos(ws.angle + half) * reach) * g.cell, g.oy + (ws.y + Math.sin(ws.angle + half) * reach) * g.cell);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,212,255,.12)'; ctx.fill();
+  ctx.restore();
+
+  drawPlayer(ctx, ws.x, ws.y, ws.angle, g.ox, g.oy, g.cell, '#00d4ff');
+}
