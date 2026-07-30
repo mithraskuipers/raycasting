@@ -151,7 +151,10 @@
   <div id="walkWrap" style="display:none">
     <div class="walk-stage" id="w-focus" tabindex="0">
       <canvas id="w-3d"></canvas>
-      <canvas id="w-map"></canvas>
+      <div class="walk-map-wrap">
+        <div class="walk-map-label">Map</div>
+        <canvas id="w-map"></canvas>
+      </div>
       <div class="walk-hint">This is what the DDA ray casts from every other tab look like rendered live, one vertical strip per ray, corrected for fisheye.</div>
       <div class="walk-controls-hint">↑ forward &nbsp; ↓ back &nbsp; ← turn left &nbsp; → turn right</div>
     </div>
