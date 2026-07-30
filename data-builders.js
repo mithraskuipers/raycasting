@@ -102,8 +102,8 @@ const WALL_ORIGINS = {
   diagonal:   { x: 1.2, y: 1.2 }
 };
 
-function buildVectorBasics(wallKey, angleDeg) {
-  const O = WALL_ORIGINS[wallKey] || WALL_ORIGINS.vertical;
+function buildVectorBasics(wallKey, angleDeg, originOverride) {
+  const O = originOverride || WALL_ORIGINS[wallKey] || WALL_ORIGINS.vertical;
   const wall = WALL_PRESETS[wallKey] || WALL_PRESETS.vertical;
   const angle = angleDeg * Math.PI / 180;
   const D = { x: Math.cos(angle), y: Math.sin(angle) };
@@ -166,9 +166,9 @@ function buildVectorBasics(wallKey, angleDeg) {
    MODE 2 - DDA grid traversal, one ray, step by
    step through the algorithm.
    ------------------------------------------------ */
-function buildDDA(mapKey, angleDeg) {
+function buildDDA(mapKey, angleDeg, playerOverride) {
   const map = MAPS[mapKey] || MAPS.simple;
-  const px = 1.5, py = 1.5;
+  const px = playerOverride ? playerOverride.x : 1.5, py = playerOverride ? playerOverride.y : 1.5;
   const angle = angleDeg * Math.PI / 180;
   const res = castRayDDA(map, px, py, angle);
   const steps = [];
@@ -214,9 +214,9 @@ function buildDDA(mapKey, angleDeg) {
    MODE 3 - Multi-ray top-down casting: sweep a
    full field of view, one ray per screen column.
    ------------------------------------------------ */
-function buildMultiRay(mapKey, fovDeg, rayCount, angleDeg) {
+function buildMultiRay(mapKey, fovDeg, rayCount, angleDeg, playerOverride) {
   const map = MAPS[mapKey] || MAPS.simple;
-  const px = 2.5, py = 2.5;
+  const px = playerOverride ? playerOverride.x : 2.5, py = playerOverride ? playerOverride.y : 2.5;
   const baseAngle = angleDeg * Math.PI / 180;
   const fov = fovDeg * Math.PI / 180;
   const rays = [];

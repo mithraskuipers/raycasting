@@ -9,6 +9,10 @@ let mode = 'vector', cur = 0, total = 0, stepsData = [], playing = false, playTi
 const charts = {};
 const MODES = ['vector', 'dda', 'multiray', 'projection', 'walk'];
 
+/* Origin/player positions set by dragging on the top-down scenes.
+   null means "use the mode's default / slider-driven position". */
+let vecOriginOverride = null, ddaPlayerOverride = null, mrPlayerOverride = null;
+
 /* ------------------------------------------------
    DOM utilities
    ------------------------------------------------ */
@@ -173,21 +177,31 @@ function toggleModeUI(isWalk) {
   document.getElementById('walkWrap').style.display = isWalk ? '' : 'none';
 }
 
-function resetAll() {
-  stopPlay(); cur = 0;
+/* preserveCur: keep the current step index (clamped) instead of jumping
+   back to step 0. Used after a drag-to-reposition so the person doesn't
+   lose their place in the walkthrough just for moving the origin. */
+function buildAndRender(preserveCur) {
+  stopPlay();
+  const prevCur = cur;
   document.getElementById('tBody').innerHTML = '';
   if (mode === 'vector') {
-    stepsData = buildVectorBasics(gv('vec-wall'), gc('vec-angle'));
+    stepsData = buildVectorBasics(gv('vec-wall'), gc('vec-angle'), vecOriginOverride);
   } else if (mode === 'dda') {
-    stepsData = buildDDA(gv('dda-map'), gc('dda-angle'));
+    stepsData = buildDDA(gv('dda-map'), gc('dda-angle'), ddaPlayerOverride);
   } else if (mode === 'multiray') {
-    stepsData = buildMultiRay(gv('mr-map'), gc('mr-fov'), gc('mr-rays'), gc('mr-angle'));
+    stepsData = buildMultiRay(gv('mr-map'), gc('mr-fov'), gc('mr-rays'), gc('mr-angle'), mrPlayerOverride);
   } else {
     stepsData = buildProjection(gc('proj-fov'), gc('proj-dist'), gc('proj-cols'));
   }
   total = stepsData.length - 1;
+  cur = preserveCur ? Math.min(prevCur, total) : 0;
   setupCharts(); buildTableHead(); updateUI();
 }
+function resetAll() {
+  vecOriginOverride = null; ddaPlayerOverride = null; mrPlayerOverride = null;
+  buildAndRender(false);
+}
+function rebuildKeepStep() { buildAndRender(true); }
 
 /* ------------------------------------------------
    Keyboard shortcuts
@@ -291,3 +305,4 @@ window.addEventListener('resize', () => {
    Boot
    ------------------------------------------------ */
 resetAll();
+bindWalkMapDrag();

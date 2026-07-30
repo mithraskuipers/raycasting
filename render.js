@@ -117,12 +117,14 @@ function setupCharts() {
   const area = document.getElementById('chartsArea');
   if (mode === 'vector') {
     area.innerHTML = `<div class="scene-box tall"><canvas id="v-scene"></canvas></div>`;
+    bindVectorDrag();
   } else if (mode === 'dda') {
     area.innerHTML = `
       <div class="scene-grid">
         <div class="scene-box tall"><canvas id="d-grid"></canvas></div>
         <div class="chart-box"><h4>sideDistX vs sideDistY</h4><div class="chart-inner"><canvas id="d-side"></canvas></div></div>
       </div>`;
+    bindDDADrag();
   } else if (mode === 'multiray') {
     area.innerHTML = `
       <div class="scene-grid" style="margin-bottom:12px">
@@ -130,6 +132,7 @@ function setupCharts() {
         <div class="scene-box tall"><canvas id="m-3d"></canvas></div>
       </div>
       <div class="chart-box wide"><h4>Depth Buffer - corrected distance per ray</h4><div class="chart-inner"><canvas id="m-depth"></canvas></div></div>`;
+    bindMultiRayDrag();
   } else {
     area.innerHTML = `
       <div class="scene-box" style="margin-bottom:12px"><canvas id="p-top"></canvas></div>
@@ -138,7 +141,175 @@ function setupCharts() {
         <div class="chart-box"><h4>Corrected (Perpendicular)</h4><div class="chart-inner"><canvas id="p-corrected-3d"></canvas></div></div>
       </div>
       <div class="chart-box wide"><h4>Distance vs. Ray Angle</h4><div class="chart-inner"><canvas id="p-chart"></canvas></div></div>`;
+    bindProjectionDrag();
   }
+}
+
+/* ------------------------------------------------
+   Draggable top-view interaction (shared)
+   Click sets origin/player position; dragging away
+   from that point sets facing direction; release
+   commits both and recomputes the underlying data.
+   Bound once at document level so re-creating
+   canvases on mode switch/reset never leaks listeners.
+   ------------------------------------------------ */
+let activeDrag = null;
+function dragPoint(e, el, toWorld) {
+  const rect = el.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+  return toWorld(cx, cy, rect);
+}
+function bindDraggableScene(canvasId, handlers) {
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  function begin(e) {
+    e.preventDefault();
+    const pt = dragPoint(e, el, handlers.toWorld);
+    const { x, y } = handlers.clamp ? handlers.clamp(pt.x, pt.y) : pt;
+    const angle = handlers.initialAngle ? handlers.initialAngle() : 0;
+    activeDrag = { el, handlers, sx: x, sy: y, angle };
+    handlers.preview(x, y, angle);
+  }
+  el.addEventListener('mousedown', begin);
+  el.addEventListener('touchstart', begin, { passive: false });
+}
+function onDragMove(e) {
+  if (!activeDrag) return;
+  e.preventDefault();
+  const pt = dragPoint(e, activeDrag.el, activeDrag.handlers.toWorld);
+  const dx = pt.x - activeDrag.sx, dy = pt.y - activeDrag.sy;
+  if (Math.hypot(dx, dy) > 0.15) activeDrag.angle = Math.atan2(dy, dx);
+  activeDrag.handlers.preview(activeDrag.sx, activeDrag.sy, activeDrag.angle);
+}
+function onDragEnd() {
+  if (!activeDrag) return;
+  const { handlers, sx, sy, angle } = activeDrag;
+  activeDrag = null;
+  handlers.commit(sx, sy, angle);
+}
+document.addEventListener('mousemove', onDragMove);
+document.addEventListener('touchmove', onDragMove, { passive: false });
+document.addEventListener('mouseup', onDragEnd);
+document.addEventListener('touchend', onDragEnd);
+
+function bindVectorDrag() {
+  bindDraggableScene('v-scene', {
+    toWorld(cx, cy, rect) {
+      const { scale, ox, oy } = vectorLayout(rect.width, rect.height);
+      return { x: (cx - ox) / scale, y: (cy - oy) / scale };
+    },
+    clamp(x, y) { return { x: Math.min(VEC_WORLD_MAX, Math.max(0, x)), y: Math.min(VEC_WORLD_MAX, Math.max(0, y)) }; },
+    initialAngle() { const s = stepsData[cur]; return s ? s.angleDeg * Math.PI / 180 : 0; },
+    preview(x, y, angle) {
+      const s = stepsData[cur]; if (!s) return;
+      const D = { x: Math.cos(angle), y: Math.sin(angle) };
+      const hit = raySegmentIntersect(x, y, D.x, D.y, s.wall.ax, s.wall.ay, s.wall.bx, s.wall.by);
+      renderVectorScene(Object.assign({}, s, { O: { x, y }, D, hit, angleDeg: ((angle * 180 / Math.PI) + 360) % 360 }));
+    },
+    commit(x, y, angle) {
+      vecOriginOverride = { x, y };
+      const deg = Math.round(((angle * 180 / Math.PI) + 360) % 360);
+      document.getElementById('vec-angle').value = deg;
+      sv('vec-av', deg + '°');
+      rebuildKeepStep();
+    }
+  });
+}
+
+function bindDDADrag() {
+  bindDraggableScene('d-grid', {
+    toWorld(cx, cy, rect) {
+      const s = stepsData[cur]; const map = s ? s.map : MAPS.simple;
+      const g = fitGrid(map, rect.width, rect.height);
+      return { x: (cx - g.ox) / g.cell, y: (cy - g.oy) / g.cell };
+    },
+    clamp(x, y) {
+      const s = stepsData[cur]; const map = s ? s.map : MAPS.simple;
+      return { x: Math.min(map[0].length - 0.05, Math.max(0.05, x)), y: Math.min(map.length - 0.05, Math.max(0.05, y)) };
+    },
+    initialAngle() { const s = stepsData[cur]; return s ? s.angle : 0; },
+    preview(x, y, angle) {
+      const s = stepsData[cur]; if (!s) return;
+      const res = castRayDDA(s.map, x, y, angle);
+      renderDDAScene(Object.assign({}, s, { px: x, py: y, angle, res }));
+    },
+    commit(x, y, angle) {
+      ddaPlayerOverride = { x, y };
+      const deg = Math.round(((angle * 180 / Math.PI) + 360) % 360);
+      document.getElementById('dda-angle').value = deg;
+      sv('dda-av', deg + '°');
+      rebuildKeepStep();
+    }
+  });
+}
+
+function bindMultiRayDrag() {
+  bindDraggableScene('m-top', {
+    toWorld(cx, cy, rect) {
+      const s = stepsData[cur]; const map = s ? s.map : MAPS.simple;
+      const g = fitGrid(map, rect.width, rect.height);
+      return { x: (cx - g.ox) / g.cell, y: (cy - g.oy) / g.cell };
+    },
+    clamp(x, y) {
+      const s = stepsData[cur]; const map = s ? s.map : MAPS.simple;
+      return { x: Math.min(map[0].length - 0.05, Math.max(0.05, x)), y: Math.min(map.length - 0.05, Math.max(0.05, y)) };
+    },
+    initialAngle() { const s = stepsData[cur]; return s ? s.baseAngle : 0; },
+    preview(x, y, angle) {
+      const s = stepsData[cur]; if (!s) return;
+      const n = s.rays.length;
+      const rays = [];
+      for (let i = 0; i < n; i++) {
+        const a = n > 1 ? angle - s.fov / 2 + i * (s.fov / (n - 1)) : angle;
+        const res = castRayDDA(s.map, x, y, a);
+        rays.push({ angle: a, dist: res.perpDist, side: res.side, hitX: res.hitX, hitY: res.hitY });
+      }
+      renderMultiRayScene(Object.assign({}, s, { px: x, py: y, baseAngle: angle, rays }));
+    },
+    commit(x, y, angle) {
+      mrPlayerOverride = { x, y };
+      const deg = Math.round(((angle * 180 / Math.PI) + 360) % 360);
+      document.getElementById('mr-angle').value = deg;
+      sv('mr-av', deg + '°');
+      rebuildKeepStep();
+    }
+  });
+}
+
+/* Projection tab: the wall is flat and infinite, so only distance-to-wall
+   is geometrically meaningful. Dragging up/down sets D0 directly (mirrors
+   the Wall Distance slider); left/right has no effect on a flat wall. */
+function projLayout(w, h) {
+  const worldW = 10, worldH = 6, pad = 22;
+  const scale = Math.min((w - 2 * pad) / worldW, (h - 2 * pad) / worldH);
+  const oy = (h - worldH * scale) / 2;
+  return { scale, oy, worldH };
+}
+function bindProjectionDrag() {
+  bindDraggableScene('p-top', {
+    toWorld(cx, cy, rect) {
+      const { scale, oy } = projLayout(rect.width, rect.height);
+      return { x: 0, y: (cy - oy) / scale };
+    },
+    clamp(x, y) { return { x: 0, y }; },
+    initialAngle() { return 0; },
+    preview(x, y) {
+      const s = stepsData[cur]; if (!s) return;
+      const playerY = 6 - 0.7;
+      const d0 = Math.min(8, Math.max(2, playerY - y));
+      const naive = s.deltas.map(d => d0 / Math.cos(d));
+      const corrected = naive.map((n, i) => n * Math.cos(s.deltas[i]));
+      renderProjectionScene(Object.assign({}, s, { D0: d0, naive, corrected }));
+    },
+    commit(x, y) {
+      const playerY = 6 - 0.7;
+      const d0 = Math.round(Math.min(8, Math.max(2, playerY - y)));
+      document.getElementById('proj-dist').value = d0;
+      sv('proj-dv', d0);
+      rebuildKeepStep();
+    }
+  });
 }
 
 /* ------------------------------------------------
@@ -156,13 +327,18 @@ function renderCharts() {
 /* ------------------------------------------------
    MODE 1 - vector / ray-segment scene
    ------------------------------------------------ */
+const VEC_WORLD_MAX = 9, VEC_PAD = 24;
+function vectorLayout(w, h) {
+  const scale = Math.min((w - 2 * VEC_PAD) / VEC_WORLD_MAX, (h - 2 * VEC_PAD) / VEC_WORLD_MAX);
+  const ox = (w - VEC_WORLD_MAX * scale) / 2, oy = (h - VEC_WORLD_MAX * scale) / 2;
+  return { scale, ox, oy };
+}
 function renderVectorScene(s) {
   const p = prepCanvas('v-scene'); if (!p) return;
   const { ctx, w, h } = p;
   clearScene(ctx, w, h);
-  const worldMax = 9, pad = 24;
-  const scale = Math.min((w - 2 * pad) / worldMax, (h - 2 * pad) / worldMax);
-  const ox = (w - worldMax * scale) / 2, oy = (h - worldMax * scale) / 2;
+  const worldMax = VEC_WORLD_MAX;
+  const { scale, ox, oy } = vectorLayout(w, h);
   const toPx = (x, y) => [ox + x * scale, oy + y * scale];
 
   ctx.strokeStyle = 'rgba(26,45,68,.5)'; ctx.lineWidth = 1;
@@ -401,6 +577,45 @@ function renderWalk3D(ws) {
     ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${fog.toFixed(2)})`;
     ctx.fillRect(i * colW, (h - lineH) / 2, colW + 1, lineH);
   }
+}
+
+/* Minimap in Walk Mode drives the live player state directly - no
+   preview/commit split needed since the animation loop redraws every
+   frame anyway. Click to teleport, drag to set facing direction. */
+let walkMapDragging = false, walkMapStartX = 0, walkMapStartY = 0;
+function bindWalkMapDrag() {
+  const el = document.getElementById('w-map');
+  if (!el) return;
+  function toWorld(e) {
+    const rect = el.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const g = fitGrid(walkState.map, rect.width, rect.height, 6);
+    return { x: (cx - g.ox) / g.cell, y: (cy - g.oy) / g.cell };
+  }
+  function begin(e) {
+    if (!walkState) return;
+    e.preventDefault();
+    walkMapDragging = true;
+    const { x, y } = toWorld(e);
+    walkMapStartX = Math.min(walkState.map[0].length - 0.1, Math.max(0.1, x));
+    walkMapStartY = Math.min(walkState.map.length - 0.1, Math.max(0.1, y));
+    walkState.x = walkMapStartX; walkState.y = walkMapStartY;
+  }
+  function move(e) {
+    if (!walkMapDragging || !walkState) return;
+    e.preventDefault();
+    const { x, y } = toWorld(e);
+    const dx = x - walkMapStartX, dy = y - walkMapStartY;
+    if (Math.hypot(dx, dy) > 0.15) walkState.angle = Math.atan2(dy, dx);
+  }
+  function end() { walkMapDragging = false; }
+  el.addEventListener('mousedown', begin);
+  el.addEventListener('touchstart', begin, { passive: false });
+  document.addEventListener('mousemove', move);
+  document.addEventListener('touchmove', move, { passive: false });
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchend', end);
 }
 
 function renderWalkMinimap(ws) {
