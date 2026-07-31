@@ -14,9 +14,24 @@
   <p class="subtitle">Five interactive stops covering the mathematics behind classic raycasting engines - from a single ray-wall intersection to a full corrected 3D projection you can walk around in. Every formula updates live as you step through and tweak the controls.</p>
 </header>
 </div>
+
+<!-- Full-width page navigation bar - jump between the five stops -->
+<nav class="tabbar">
+  <div class="tabbar-inner">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchMode('vector')">📍 Vector Basics</button>
+      <button class="tab-btn" onclick="switchMode('dda')">📐 DDA Algorithm</button>
+      <button class="tab-btn" onclick="switchMode('multiray')">🗺️ Multi-Ray Casting</button>
+      <button class="tab-btn" onclick="switchMode('projection')">🧊 3D Projection</button>
+      <button class="tab-btn" onclick="switchMode('walk')">🚶 Walk Mode</button>
+    </div>
+    <span class="kbd-hint"><kbd>,</kbd> Prev &nbsp;<kbd>.</kbd> Next &nbsp;<kbd>Space</kbd> Play</span>
+  </div>
+</nav>
+
 <div class="main">
 
-  <!-- Formula strip -->
+  <!-- Global formula strip - always-on overview of the whole pipeline -->
   <div class="fstrip">
     <div class="fmain" id="globalFormula">
       <span class="ac">P(t)</span> = <span class="ac">O</span> + t·<span class="gd">D</span> &nbsp;→&nbsp; DDA grid walk &nbsp;→&nbsp; <span class="or">correct for fisheye</span> &nbsp;→&nbsp; <span class="gn">height = k / distance</span>
@@ -30,181 +45,209 @@
     </div>
   </div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchMode('vector')">📍 Vector Basics</button>
-    <button class="tab-btn" onclick="switchMode('dda')">📐 DDA Algorithm</button>
-    <button class="tab-btn" onclick="switchMode('multiray')">🗺️ Multi-Ray Casting</button>
-    <button class="tab-btn" onclick="switchMode('projection')">🧊 3D Projection</button>
-    <button class="tab-btn" onclick="switchMode('walk')">🚶 Walk Mode</button>
-    <span class="kbd-hint"><kbd>,</kbd> Prev &nbsp;<kbd>.</kbd> Next &nbsp;<kbd>Space</kbd> Play</span>
-  </div>
+  <!-- Two-column workspace: theory (left) / visualization (right) -->
+  <div class="layout">
 
-  <!-- Scenario controls -->
-  <div class="sc active" id="sc-vector">
-    <div class="sc-row">
-      <div class="sc-item"><label>Wall Orientation</label>
-        <select id="vec-wall" onchange="resetAll()">
-          <option value="vertical">Vertical Wall</option>
-          <option value="horizontal">Horizontal Wall</option>
-          <option value="diagonal">Diagonal Wall</option>
-        </select>
-      </div>
-      <div class="sc-item"><label>Ray Angle θ</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="vec-angle" min="0" max="359" value="25" oninput="sv('vec-av',this.value+'°')">
-          <span class="sc-val" id="vec-av">25°</span>
+    <!-- ============== LEFT: THEORY ============== -->
+    <aside class="theory-col">
+
+      <!-- Step-by-step theory (hidden while Walk Mode is active) -->
+      <div id="stepTheory">
+
+        <div class="step-header">
+          <div class="step-badge" id="stepBadge">Step 0</div>
+          <div class="step-title" id="stepTitle">Introduction</div>
+          <div class="dots" id="dotsWrap"></div>
+        </div>
+
+        <div class="controls">
+          <button class="btn" id="btnPrev" onclick="prevStep()" disabled>◀ Prev</button>
+          <button class="btn primary" id="btnPlay" onclick="togglePlay()">▶ Play</button>
+          <button class="btn" id="btnNext" onclick="nextStep()">Next ▶</button>
+          <button class="btn danger" onclick="resetAll()">↺ Reset</button>
+        </div>
+
+        <div class="fstrip" style="margin-bottom:12px">
+          <div class="fmain" id="formulaLine"></div>
+        </div>
+
+        <div class="explain-card" id="explainCard">Loading...</div>
+
+        <div class="chips" id="chipsRow"></div>
+
+        <div class="table-wrap">
+          <div class="table-head-bar"><span>Step History</span><span id="tableLabel"></span></div>
+          <div class="table-scroll-wrap">
+            <table><thead id="tHead"></thead><tbody id="tBody"></tbody></table>
+          </div>
+        </div>
+
+      </div><!-- #stepTheory -->
+
+      <!-- Walk Mode theory (shown only while Walk Mode is active) -->
+      <div id="walkTheory" style="display:none">
+        <div class="step-header">
+          <div class="step-badge" style="background:var(--green-soft);color:var(--green);border-color:var(--green)">Live</div>
+          <div class="step-title">Everything at once</div>
+        </div>
+        <div class="explain-card">
+          Walk Mode strings together every concept from the four tabs to its left and runs it live, every frame:
+          <br><br>
+          <b>1. Cast.</b> For each vertical strip of the screen, a ray <span class="ac">P(t) = O + t·D</span> is fired from the player at a slightly different angle across the field of view.
+          <br><br>
+          <b>2. Walk the grid.</b> Each ray steps through the map with the DDA algorithm, jumping from grid line to grid line until it lands on a wall cell.
+          <br><br>
+          <b>3. Correct for fisheye.</b> The raw ray length is projected back onto the view axis with <span class="or">cos(δ)</span>, so straight walls stay straight instead of bowing outward at the screen edges.
+          <br><br>
+          <b>4. Project to height.</b> Each strip is drawn with <span class="gn">height = k / distance</span> - closer walls fill more of the screen, farther walls shrink and darken.
+        </div>
+        <div class="chips">
+          <div class="chip c-s"><div class="chip-label">Rays / frame</div><div class="chip-val">1 per column</div></div>
+          <div class="chip c-r"><div class="chip-label">Algorithm</div><div class="chip-val">DDA</div></div>
+          <div class="chip c-e"><div class="chip-label">Correction</div><div class="chip-val">cos(δ)</div></div>
+        </div>
+        <div class="explain-card" style="border-left-color:var(--green)">
+          Use <kbd>↑</kbd><kbd>↓</kbd> to move and <kbd>←</kbd><kbd>→</kbd> to turn in the view on the right. Drag on the minimap to teleport and aim.
+        </div>
+      </div><!-- #walkTheory -->
+
+    </aside>
+
+    <!-- ============== RIGHT: VISUALIZATION ============== -->
+    <section class="viz-col">
+
+      <!-- Scenario controls (mode-specific inputs) -->
+      <div class="sc active" id="sc-vector">
+        <div class="sc-row">
+          <div class="sc-item"><label>Wall Orientation</label>
+            <select id="vec-wall" onchange="resetAll()">
+              <option value="vertical">Vertical Wall</option>
+              <option value="horizontal">Horizontal Wall</option>
+              <option value="diagonal">Diagonal Wall</option>
+            </select>
+          </div>
+          <div class="sc-item"><label>Ray Angle θ</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="vec-angle" min="0" max="359" value="25" oninput="sv('vec-av',this.value+'°')">
+              <span class="sc-val" id="vec-av">25°</span>
+            </div>
+          </div>
+          <button class="btn primary" onclick="resetAll()">Apply</button>
         </div>
       </div>
-      <button class="btn primary" onclick="resetAll()">Apply</button>
-    </div>
-  </div>
 
-  <div class="sc" id="sc-dda">
-    <div class="sc-row">
-      <div class="sc-item"><label>Map</label>
-        <select id="dda-map" onchange="resetAll()">
-          <option value="simple">Simple Room</option>
-          <option value="maze">Maze</option>
-        </select>
-      </div>
-      <div class="sc-item"><label>Ray Angle θ</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="dda-angle" min="0" max="359" value="35" oninput="sv('dda-av',this.value+'°')">
-          <span class="sc-val" id="dda-av">35°</span>
+      <div class="sc" id="sc-dda">
+        <div class="sc-row">
+          <div class="sc-item"><label>Map</label>
+            <select id="dda-map" onchange="resetAll()">
+              <option value="simple">Simple Room</option>
+              <option value="maze">Maze</option>
+            </select>
+          </div>
+          <div class="sc-item"><label>Ray Angle θ</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="dda-angle" min="0" max="359" value="35" oninput="sv('dda-av',this.value+'°')">
+              <span class="sc-val" id="dda-av">35°</span>
+            </div>
+          </div>
+          <button class="btn primary" onclick="resetAll()">Apply</button>
         </div>
       </div>
-      <button class="btn primary" onclick="resetAll()">Apply</button>
-    </div>
-  </div>
 
-  <div class="sc" id="sc-multiray">
-    <div class="sc-row">
-      <div class="sc-item"><label>Map</label>
-        <select id="mr-map" onchange="resetAll()">
-          <option value="simple">Simple Room</option>
-          <option value="maze">Maze</option>
-        </select>
-      </div>
-      <div class="sc-item"><label>Facing Angle</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="mr-angle" min="0" max="359" value="15" oninput="sv('mr-av',this.value+'°')">
-          <span class="sc-val" id="mr-av">15°</span>
+      <div class="sc" id="sc-multiray">
+        <div class="sc-row">
+          <div class="sc-item"><label>Map</label>
+            <select id="mr-map" onchange="resetAll()">
+              <option value="simple">Simple Room</option>
+              <option value="maze">Maze</option>
+            </select>
+          </div>
+          <div class="sc-item"><label>Facing Angle</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="mr-angle" min="0" max="359" value="15" oninput="sv('mr-av',this.value+'°')">
+              <span class="sc-val" id="mr-av">15°</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Field of View</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="mr-fov" min="20" max="100" value="60" oninput="sv('mr-fv',this.value+'°')">
+              <span class="sc-val" id="mr-fv">60°</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Ray Count</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="mr-rays" min="6" max="36" value="18" oninput="sv('mr-rv',this.value)">
+              <span class="sc-val" id="mr-rv">18</span>
+            </div>
+          </div>
+          <button class="btn primary" onclick="resetAll()">Apply</button>
         </div>
       </div>
-      <div class="sc-item"><label>Field of View</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="mr-fov" min="20" max="100" value="60" oninput="sv('mr-fv',this.value+'°')">
-          <span class="sc-val" id="mr-fv">60°</span>
+
+      <div class="sc" id="sc-projection">
+        <div class="sc-row">
+          <div class="sc-item"><label>Field of View</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-fov" min="20" max="100" value="60" oninput="sv('proj-fv',this.value+'°')">
+              <span class="sc-val" id="proj-fv">60°</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Wall Distance D₀</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-dist" min="2" max="8" value="4" oninput="sv('proj-dv',this.value)">
+              <span class="sc-val" id="proj-dv">4</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Screen Columns</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-cols" min="9" max="33" step="2" value="21" oninput="sv('proj-cv',this.value)">
+              <span class="sc-val" id="proj-cv">21</span>
+            </div>
+          </div>
+          <button class="btn primary" onclick="resetAll()">Apply</button>
         </div>
       </div>
-      <div class="sc-item"><label>Ray Count</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="mr-rays" min="6" max="36" value="18" oninput="sv('mr-rv',this.value)">
-          <span class="sc-val" id="mr-rv">18</span>
+
+      <div class="sc" id="sc-walk">
+        <div class="sc-row">
+          <div class="sc-item"><label>Map</label>
+            <select id="walk-map" onchange="walkMapChanged()">
+              <option value="simple">Simple Room</option>
+              <option value="maze">Maze</option>
+            </select>
+          </div>
+          <div class="sc-item"><label>Field of View</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="walk-fov" min="50" max="100" value="66" oninput="sv('w-fv',this.value+'°');walkFovChanged()">
+              <span class="sc-val" id="w-fv">66°</span>
+            </div>
+          </div>
+          <span style="font-size:12px;color:var(--ink3)">Click the view below, then use <kbd>↑</kbd><kbd>↓</kbd> to move and <kbd>←</kbd><kbd>→</kbd> to turn.</span>
         </div>
       </div>
-      <button class="btn primary" onclick="resetAll()">Apply</button>
-    </div>
-  </div>
 
-  <div class="sc" id="sc-projection">
-    <div class="sc-row">
-      <div class="sc-item"><label>Field of View</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="proj-fov" min="20" max="100" value="60" oninput="sv('proj-fv',this.value+'°')">
-          <span class="sc-val" id="proj-fv">60°</span>
+      <!-- Walk mode: live first-person 3D raycasting -->
+      <div id="walkWrap" style="display:none">
+        <div class="walk-stage" id="w-focus" tabindex="0">
+          <canvas id="w-3d"></canvas>
+          <div class="walk-map-wrap">
+            <div class="walk-map-label">Map</div>
+            <canvas id="w-map"></canvas>
+          </div>
+          <div class="walk-hint">This is what the DDA ray casts from every other tab look like rendered live, one vertical strip per ray, corrected for fisheye.</div>
+          <div class="walk-controls-hint">↑ forward &nbsp; ↓ back &nbsp; ← turn left &nbsp; → turn right</div>
         </div>
       </div>
-      <div class="sc-item"><label>Wall Distance D₀</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="proj-dist" min="2" max="8" value="4" oninput="sv('proj-dv',this.value)">
-          <span class="sc-val" id="proj-dv">4</span>
-        </div>
+
+      <!-- Step-by-step scene / charts (hidden while Walk Mode is active) -->
+      <div id="stepVizWrap">
+        <div class="drag-hint">🖱️ Click-drag inside the top-down view below to relocate the origin and aim the ray — the math recalculates from wherever you drop it.</div>
+        <div id="chartsArea"></div>
       </div>
-      <div class="sc-item"><label>Screen Columns</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="proj-cols" min="9" max="33" step="2" value="21" oninput="sv('proj-cv',this.value)">
-          <span class="sc-val" id="proj-cv">21</span>
-        </div>
-      </div>
-      <button class="btn primary" onclick="resetAll()">Apply</button>
-    </div>
-  </div>
 
-  <div class="sc" id="sc-walk">
-    <div class="sc-row">
-      <div class="sc-item"><label>Map</label>
-        <select id="walk-map" onchange="walkMapChanged()">
-          <option value="simple">Simple Room</option>
-          <option value="maze">Maze</option>
-        </select>
-      </div>
-      <div class="sc-item"><label>Field of View</label>
-        <div style="display:flex;align-items:center;gap:6px">
-          <input type="range" id="walk-fov" min="50" max="100" value="66" oninput="sv('w-fv',this.value+'°');walkFovChanged()">
-          <span class="sc-val" id="w-fv">66°</span>
-        </div>
-      </div>
-      <span style="font-size:12px;color:var(--ink3)">Click the view below, then use <kbd>↑</kbd><kbd>↓</kbd> to move and <kbd>←</kbd><kbd>→</kbd> to turn.</span>
-    </div>
-  </div>
+    </section>
 
-  <!-- Walk mode: live first-person 3D raycasting -->
-  <div id="walkWrap" style="display:none">
-    <div class="walk-stage" id="w-focus" tabindex="0">
-      <canvas id="w-3d"></canvas>
-      <div class="walk-map-wrap">
-        <div class="walk-map-label">Map</div>
-        <canvas id="w-map"></canvas>
-      </div>
-      <div class="walk-hint">This is what the DDA ray casts from every other tab look like rendered live, one vertical strip per ray, corrected for fisheye.</div>
-      <div class="walk-controls-hint">↑ forward &nbsp; ↓ back &nbsp; ← turn left &nbsp; → turn right</div>
-    </div>
-  </div>
-
-  <!-- Step-by-step engine UI (hidden while Walk Mode is active) -->
-  <div id="stepModeUI">
-
-  <!-- Step header -->
-  <div class="step-header">
-    <div class="step-badge" id="stepBadge">Step 0</div>
-    <div class="step-title" id="stepTitle">Introduction</div>
-    <div class="dots" id="dotsWrap"></div>
-  </div>
-
-  <!-- Controls -->
-  <div class="controls">
-    <button class="btn" id="btnPrev" onclick="prevStep()" disabled>◀ Prev</button>
-    <button class="btn primary" id="btnPlay" onclick="togglePlay()">▶ Play</button>
-    <button class="btn" id="btnNext" onclick="nextStep()">Next ▶</button>
-    <button class="btn danger" onclick="resetAll()">↺ Reset</button>
-  </div>
-
-  <!-- Formula card -->
-  <div class="fstrip" style="margin-bottom:12px">
-    <div class="fmain" id="formulaLine"></div>
-  </div>
-
-  <!-- Explain card -->
-  <div class="explain-card" id="explainCard">Loading...</div>
-
-  <!-- Chips -->
-  <div class="chips" id="chipsRow"></div>
-
-  <!-- Scene / charts area (injected per mode) -->
-  <div class="drag-hint">🖱️ Click-drag inside the top-down view below to relocate the origin and aim the ray — the math recalculates from wherever you drop it.</div>
-  <div id="chartsArea"></div>
-
-  <!-- Step history table -->
-  <div class="table-wrap">
-    <div class="table-head-bar"><span>Step History</span><span id="tableLabel"></span></div>
-    <div class="table-scroll-wrap">
-      <table><thead id="tHead"></thead><tbody id="tBody"></tbody></table>
-    </div>
-  </div>
-
-  </div><!-- #stepModeUI -->
+  </div><!-- .layout -->
 
 </div><!-- .main -->
 

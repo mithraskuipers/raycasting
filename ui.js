@@ -171,9 +171,13 @@ function switchMode(m) {
   else resetAll();
 }
 
-/* Show the step-by-step engine UI, or the live Walk Mode canvas, never both */
+/* Show the step-by-step theory + scene UI, or the live Walk Mode
+   theory + canvas, never both. Left (theory) and right (viz) columns
+   are toggled together so each mode gets a matching pair. */
 function toggleModeUI(isWalk) {
-  document.getElementById('stepModeUI').style.display = isWalk ? 'none' : '';
+  document.getElementById('stepTheory').style.display = isWalk ? 'none' : '';
+  document.getElementById('walkTheory').style.display = isWalk ? '' : 'none';
+  document.getElementById('stepVizWrap').style.display = isWalk ? 'none' : '';
   document.getElementById('walkWrap').style.display = isWalk ? '' : 'none';
 }
 
