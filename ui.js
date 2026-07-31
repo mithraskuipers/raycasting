@@ -54,20 +54,20 @@ function makeRow(i) {
   const s = stepsData[i] || {};
   if (mode === 'vector') {
     const details = (s.chips || []).map(c => `${c[0]}: ${c[1]}`).join(' &nbsp;·&nbsp; ');
-    return `<td>${i}</td><td style="color:#00d4ff">${s.title || ''}</td><td style="color:#a8c4dc;font-size:12px">${details}</td>`;
+    return `<td>${i}</td><td style="color:#2c4bdb;font-weight:600">${s.title || ''}</td><td style="color:#4c5468;font-size:12px">${details}</td>`;
   } else if (mode === 'dda') {
     if (s.revealIdx === undefined || s.revealIdx < 0)
-      return `<td>${i}</td><td colspan="4" style="color:#6a90aa">${s.title || 'setup'}</td>`;
+      return `<td>${i}</td><td colspan="4" style="color:#8791a3">${s.title || 'setup'}</td>`;
     if (s.revealIdx === s.res.iterations.length)
-      return `<td>${i}</td><td colspan="3" style="color:#00e599">Final perpDist = ${s.res.perpDist.toFixed(3)}</td><td>—</td>`;
+      return `<td>${i}</td><td colspan="3" style="color:#157a5e;font-weight:600">Final perpDist = ${s.res.perpDist.toFixed(3)}</td><td>—</td>`;
     const it = s.res.iterations[s.revealIdx];
-    return `<td>${i}</td><td style="color:#a855f7">(${it.mapX}, ${it.mapY})</td><td style="color:${it.axis === 'X' ? '#00d4ff' : '#ffb830'}">${it.axis}</td><td style="color:#00e599">${it.t.toFixed(3)}</td><td style="color:${it.isWall ? '#ff4d6a' : '#a8c4dc'}">${it.isWall ? 'Yes' : 'No'}</td>`;
+    return `<td>${i}</td><td style="color:#6338bf">(${it.mapX}, ${it.mapY})</td><td style="color:${it.axis === 'X' ? '#2c4bdb' : '#a8710f'}">${it.axis}</td><td style="color:#157a5e">${it.t.toFixed(3)}</td><td style="color:${it.isWall ? '#c1382c' : '#4c5468'}">${it.isWall ? 'Yes' : 'No'}</td>`;
   } else if (mode === 'multiray') {
-    if (i === 0) return `<td>—</td><td colspan="3" style="color:#6a90aa">Setup: ${s.title}</td>`;
+    if (i === 0) return `<td>—</td><td colspan="3" style="color:#8791a3">Setup: ${s.title}</td>`;
     const r = s.rays[i - 1];
-    return `<td>${i}</td><td style="color:#ffb830">${(r.angle * 180 / Math.PI).toFixed(1)}°</td><td style="color:#00e599">${r.dist.toFixed(2)}</td><td style="color:#00d4ff">${r.side === 0 ? 'X' : 'Y'}</td>`;
+    return `<td>${i}</td><td style="color:#a8710f">${(r.angle * 180 / Math.PI).toFixed(1)}°</td><td style="color:#157a5e">${r.dist.toFixed(2)}</td><td style="color:#2c4bdb">${r.side === 0 ? 'X' : 'Y'}</td>`;
   } else {
-    return `<td>${i}</td><td style="color:#ffb830">${(s.edgeDelta * 180 / Math.PI).toFixed(1)}°</td><td style="color:#ff4d6a">${s.edgeNaive.toFixed(2)}</td><td style="color:#00e599">${s.edgeCorrected.toFixed(2)}</td>`;
+    return `<td>${i}</td><td style="color:#a8710f">${(s.edgeDelta * 180 / Math.PI).toFixed(1)}°</td><td style="color:#c1382c">${s.edgeNaive.toFixed(2)}</td><td style="color:#157a5e">${s.edgeCorrected.toFixed(2)}</td>`;
   }
 }
 
@@ -125,9 +125,9 @@ function updateUI() {
     hot = s.res.iterations[s.revealIdx].isWall;
   }
   if (hot) {
-    badge.style.background = 'rgba(255,77,106,.15)'; badge.style.color = 'var(--red)'; badge.style.borderColor = 'var(--red)';
+    badge.style.background = 'var(--red-soft)'; badge.style.color = 'var(--red)'; badge.style.borderColor = 'var(--red)';
   } else {
-    badge.style.background = 'rgba(0,212,255,.12)'; badge.style.color = 'var(--accent)'; badge.style.borderColor = 'var(--accent)';
+    badge.style.background = 'var(--accent-soft)'; badge.style.color = 'var(--accent)'; badge.style.borderColor = 'var(--accent)';
   }
 
   document.getElementById('btnPrev').disabled = cur <= 0;
