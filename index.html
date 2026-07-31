@@ -20,9 +20,9 @@
   <div class="tabbar-inner">
     <div class="tabs">
       <button class="tab-btn active" onclick="switchMode('vector')">📍 Vector Basics</button>
+      <button class="tab-btn" onclick="switchMode('projection')">🧊 3D Projection</button>
       <button class="tab-btn" onclick="switchMode('dda')">📐 DDA Algorithm</button>
       <button class="tab-btn" onclick="switchMode('multiray')">🗺️ Multi-Ray Casting</button>
-      <button class="tab-btn" onclick="switchMode('projection')">🧊 3D Projection</button>
       <button class="tab-btn" onclick="switchMode('walk')">🚶 Walk Mode</button>
     </div>
     <span class="kbd-hint"><kbd>,</kbd> Prev &nbsp;<kbd>.</kbd> Next &nbsp;<kbd>Space</kbd> Play</span>
@@ -120,11 +120,17 @@
       <div class="sc active" id="sc-vector">
         <div class="sc-row">
           <div class="sc-item"><label>Wall Orientation</label>
-            <select id="vec-wall" onchange="resetAll()">
+            <select id="vec-wall" onchange="vecWallChanged()">
               <option value="vertical">Vertical Wall</option>
               <option value="horizontal">Horizontal Wall</option>
               <option value="diagonal">Diagonal Wall</option>
             </select>
+          </div>
+          <div class="sc-item"><label>Ray Origin X</label>
+            <input type="number" class="num-input" id="vec-ox" min="0" max="9" step="0.5" value="1.5" onchange="resetAll()">
+          </div>
+          <div class="sc-item"><label>Ray Origin Y</label>
+            <input type="number" class="num-input" id="vec-oy" min="0" max="9" step="0.5" value="4" onchange="resetAll()">
           </div>
           <div class="sc-item"><label>Ray Angle θ</label>
             <div style="display:flex;align-items:center;gap:6px">
@@ -134,7 +140,34 @@
           </div>
           <button class="btn primary" onclick="resetAll()">Apply</button>
         </div>
+        <div class="sc-hint">Drag the blue point in the scene below to move it, or set exact X/Y and angle here. A and B are the wall's two endpoints - changing "Wall Orientation" moves them.</div>
       </div>
+
+
+      <div class="sc" id="sc-projection">
+        <div class="sc-row">
+          <div class="sc-item"><label>Field of View</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-fov" min="20" max="100" value="60" oninput="sv('proj-fv',this.value+'°')">
+              <span class="sc-val" id="proj-fv">60°</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Wall Distance D₀</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-dist" min="2" max="8" value="4" oninput="sv('proj-dv',this.value)">
+              <span class="sc-val" id="proj-dv">4</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Screen Columns</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-cols" min="9" max="33" step="2" value="21" oninput="sv('proj-cv',this.value)">
+              <span class="sc-val" id="proj-cv">21</span>
+            </div>
+          </div>
+          <button class="btn primary" onclick="resetAll()">Apply</button>
+        </div>
+      </div>
+
 
       <div class="sc" id="sc-dda">
         <div class="sc-row">
@@ -153,6 +186,7 @@
           <button class="btn primary" onclick="resetAll()">Apply</button>
         </div>
       </div>
+
 
       <div class="sc" id="sc-multiray">
         <div class="sc-row">
@@ -184,29 +218,6 @@
         </div>
       </div>
 
-      <div class="sc" id="sc-projection">
-        <div class="sc-row">
-          <div class="sc-item"><label>Field of View</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="range" id="proj-fov" min="20" max="100" value="60" oninput="sv('proj-fv',this.value+'°')">
-              <span class="sc-val" id="proj-fv">60°</span>
-            </div>
-          </div>
-          <div class="sc-item"><label>Wall Distance D₀</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="range" id="proj-dist" min="2" max="8" value="4" oninput="sv('proj-dv',this.value)">
-              <span class="sc-val" id="proj-dv">4</span>
-            </div>
-          </div>
-          <div class="sc-item"><label>Screen Columns</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="range" id="proj-cols" min="9" max="33" step="2" value="21" oninput="sv('proj-cv',this.value)">
-              <span class="sc-val" id="proj-cv">21</span>
-            </div>
-          </div>
-          <button class="btn primary" onclick="resetAll()">Apply</button>
-        </div>
-      </div>
 
       <div class="sc" id="sc-walk">
         <div class="sc-row">

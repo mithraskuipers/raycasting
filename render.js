@@ -116,7 +116,15 @@ function setupCharts() {
   Object.keys(charts).forEach(k => delete charts[k]);
   const area = document.getElementById('chartsArea');
   if (mode === 'vector') {
-    area.innerHTML = `<div class="scene-box tall"><canvas id="v-scene"></canvas></div>`;
+    area.innerHTML = `
+      <div class="scene-box tall"><canvas id="v-scene"></canvas></div>
+      <div class="fleg" style="margin-top:12px">
+        <div class="fl"><div class="fldot" style="background:var(--accent)"></div><b>O</b> — ray origin (where it's fired from)</div>
+        <div class="fl"><div class="fldot" style="background:var(--gold)"></div><b>D</b> — direction the ray looks, angle θ</div>
+        <div class="fl"><div class="fldot" style="background:var(--purple)"></div><b>A, B</b> — the wall's two endpoints</div>
+        <div class="fl"><div class="fldot" style="background:var(--red)"></div><b>P</b> — where the ray hits the wall (once solved)</div>
+        <div class="fl"><div class="fldot" style="background:var(--green)"></div><b>t</b> — distance from O to P</div>
+      </div>`;
     bindVectorDrag();
   } else if (mode === 'dda') {
     area.innerHTML = `
@@ -212,6 +220,8 @@ function bindVectorDrag() {
       const deg = Math.round(((angle * 180 / Math.PI) + 360) % 360);
       document.getElementById('vec-angle').value = deg;
       sv('vec-av', deg + '°');
+      document.getElementById('vec-ox').value = Math.round(x * 10) / 10;
+      document.getElementById('vec-oy').value = Math.round(y * 10) / 10;
       rebuildKeepStep();
     }
   });
@@ -347,30 +357,44 @@ function renderVectorScene(s) {
     ctx.beginPath(); ctx.moveTo(gx, oy); ctx.lineTo(gx, oy + worldMax * scale); ctx.stroke();
     const gy = toPx(0, i)[1];
     ctx.beginPath(); ctx.moveTo(ox, gy); ctx.lineTo(ox + worldMax * scale, gy); ctx.stroke();
+    label(ctx, String(i), gx - 3, oy + worldMax * scale + 13, '#aab0bd', 9);
+    label(ctx, String(i), ox - 13, gy + 3, '#aab0bd', 9);
   }
 
   const reveal = cur;
   const [Ox, Oy] = toPx(s.O.x, s.O.y);
   const hit = s.hit, good = !!(hit && hit.valid);
 
-  if (reveal >= 1) {
-    const [ex, ey] = toPx(s.O.x + s.D.x * 8, s.O.y + s.D.y * 8);
-    ctx.save(); ctx.setLineDash([5, 4]);
-    ctx.strokeStyle = '#a8710f'; ctx.lineWidth = 1.8;
-    ctx.beginPath(); ctx.moveTo(Ox, Oy); ctx.lineTo(ex, ey); ctx.stroke();
-    ctx.restore();
-    label(ctx, 'D', ox + (s.O.x + s.D.x * 2) * scale + 6, oy + (s.O.y + s.D.y * 2) * scale, '#a8710f');
-  }
-  if (reveal >= 2) {
+  // Wall segment: sketched faintly from the very first step so it's always
+  // clear where the wall sits, then gets promoted to full color/labels once
+  // its own step (2) arrives, and to green/red once validity is known.
+  {
     const [ax, ay] = toPx(s.wall.ax, s.wall.ay);
     const [bx, by] = toPx(s.wall.bx, s.wall.by);
-    ctx.strokeStyle = reveal >= 5 ? (good ? '#157a5e' : '#c1382c') : '#6338bf';
-    ctx.lineWidth = 4;
+    const wallShown = reveal >= 2;
+    ctx.strokeStyle = wallShown ? (reveal >= 5 ? (good ? '#157a5e' : '#c1382c') : '#6338bf') : 'rgba(99,56,191,.32)';
+    ctx.lineWidth = wallShown ? 4 : 2.5;
     ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-    drawPoint(ctx, s.wall.ax, s.wall.ay, ox, oy, scale, '#6338bf', 4);
-    drawPoint(ctx, s.wall.bx, s.wall.by, ox, oy, scale, '#6338bf', 4);
-    label(ctx, 'A', ax + 6, ay - 6, '#6338bf'); label(ctx, 'B', bx + 6, by - 6, '#6338bf');
+    if (wallShown) {
+      drawPoint(ctx, s.wall.ax, s.wall.ay, ox, oy, scale, '#6338bf', 4);
+      drawPoint(ctx, s.wall.bx, s.wall.by, ox, oy, scale, '#6338bf', 4);
+      label(ctx, 'A', ax + 6, ay - 6, '#6338bf'); label(ctx, 'B', bx + 6, by - 6, '#6338bf');
+    }
   }
+
+  // Direction ray: also sketched faintly right away so it's clear which way
+  // the ray is looking, then promoted to solid gold once step 1 arrives.
+  {
+    const dShown = reveal >= 1;
+    const [ex, ey] = toPx(s.O.x + s.D.x * 8, s.O.y + s.D.y * 8);
+    ctx.save(); ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = dShown ? '#a8710f' : 'rgba(168,113,15,.35)';
+    ctx.lineWidth = dShown ? 1.8 : 1.3;
+    ctx.beginPath(); ctx.moveTo(Ox, Oy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.restore();
+    if (dShown) label(ctx, 'D', ox + (s.O.x + s.D.x * 2) * scale + 6, oy + (s.O.y + s.D.y * 2) * scale, '#a8710f');
+  }
+
   if (reveal >= 6 && good) {
     const [hx, hy] = toPx(hit.x, hit.y);
     ctx.strokeStyle = '#2c4bdb'; ctx.lineWidth = 2.2;

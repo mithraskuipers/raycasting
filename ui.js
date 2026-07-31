@@ -7,7 +7,7 @@
 
 let mode = 'vector', cur = 0, total = 0, stepsData = [], playing = false, playTimer = null;
 const charts = {};
-const MODES = ['vector', 'dda', 'multiray', 'projection', 'walk'];
+const MODES = ['vector', 'projection', 'dda', 'multiray', 'walk'];
 
 /* Origin/player positions set by dragging on the top-down scenes.
    null means "use the mode's default / slider-driven position". */
@@ -189,7 +189,7 @@ function buildAndRender(preserveCur) {
   const prevCur = cur;
   document.getElementById('tBody').innerHTML = '';
   if (mode === 'vector') {
-    stepsData = buildVectorBasics(gv('vec-wall'), gc('vec-angle'), vecOriginOverride);
+    stepsData = buildVectorBasics(gv('vec-wall'), gc('vec-angle'), vecOriginOverride || { x: gc('vec-ox'), y: gc('vec-oy') });
   } else if (mode === 'dda') {
     stepsData = buildDDA(gv('dda-map'), gc('dda-angle'), ddaPlayerOverride);
   } else if (mode === 'multiray') {
@@ -206,6 +206,16 @@ function resetAll() {
   buildAndRender(false);
 }
 function rebuildKeepStep() { buildAndRender(true); }
+
+/* Switching wall orientation snaps the Origin X/Y fields to that wall's
+   sensible default position, so the ray reliably hits the new wall instead
+   of staying wherever the previous wall's default left it. */
+function vecWallChanged() {
+  const preset = WALL_ORIGINS[gv('vec-wall')] || WALL_ORIGINS.vertical;
+  document.getElementById('vec-ox').value = preset.x;
+  document.getElementById('vec-oy').value = preset.y;
+  resetAll();
+}
 
 /* ------------------------------------------------
    Keyboard shortcuts

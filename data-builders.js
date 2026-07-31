@@ -177,7 +177,7 @@ function buildDDA(mapKey, angleDeg, playerOverride) {
 
   push('The Grid',
     `map[y][x] ∈ { open, wall }`,
-    `Raycasting engines represent the world as a grid of cells rather than raw geometry. Instead of testing every wall's shape, we walk cell-by-cell along the ray until we land on a wall cell. This walk is the <b>DDA</b> algorithm (Digital Differential Analyzer).`,
+    `Vector Basics solved one ray against one wall segment algebraically - but a real map has dozens of segments, and every ray would need to be tested against every one of them. Raycasting engines sidestep this by representing the world as a grid of cells rather than raw geometry. Instead of testing every wall's shape, we walk cell-by-cell along the ray until we land on a wall cell. This walk is the <b>DDA</b> algorithm (Digital Differential Analyzer), and - conveniently - it will hand us back the corrected, non-fisheye distance from the Projection tab for free.`,
     [['Grid size', `${map[0].length}×${map.length}`, 'c-s'], ['Player', `(${px}, ${py})`, 'c-s']], -1);
 
   push('Step Size per Axis',
@@ -203,7 +203,7 @@ function buildDDA(mapKey, angleDeg, playerOverride) {
 
   push('Perpendicular Distance',
     `perpDist = t = ${res.perpDist.toFixed(3)}`,
-    `The last crossing distance <b>is already</b> the corrected, non-fisheye distance - because we measured it along the grid axes instead of the raw diagonal ray length. This single number decides how tall the wall is drawn.`,
+    `As introduced in the Projection tab, we need the corrected perpendicular distance, not the raw diagonal ray length. The last crossing distance <b>is already</b> that corrected value - because we measured it along the grid axes instead of the raw diagonal. This single number decides how tall the wall is drawn.`,
     [['perpDist', res.perpDist.toFixed(3), 'c-e'], ['side', res.side === 0 ? 'X' : 'Y', 'c-q']],
     res.iterations.length);
 
@@ -238,7 +238,7 @@ function buildMultiRay(mapKey, fovDeg, rayCount, angleDeg, playerOverride) {
     steps.push({
       title: `Casting Ray ${i + 1} / ${rayCount}`,
       formula: `θ<sub>${i}</sub> = facing − FOV/2 + ${i}·(FOV/${rayCount - 1}) = ${(r.angle * 180 / Math.PI).toFixed(1)}°`,
-      explain: `This ray lands on the ${r.side === 0 ? 'X-side (vertical face)' : 'Y-side (horizontal face)'} of a wall, corrected distance ${r.dist.toFixed(2)}. Closer walls get drawn taller - that mapping is the subject of the Projection tab.`,
+      explain: `This ray lands on the ${r.side === 0 ? 'X-side (vertical face)' : 'Y-side (horizontal face)'} of a wall, corrected distance ${r.dist.toFixed(2)}. Closer walls get drawn taller - the exact height mapping you saw back in the Projection tab.`,
       chips: [['Ray #', i + 1, 'c-s'], ['Angle', (r.angle * 180 / Math.PI).toFixed(1) + '°', 'c-a'],
                ['Distance', r.dist.toFixed(2), 'c-r'], ['Side', r.side === 0 ? 'X' : 'Y', 'c-q']],
       map, px, py, baseAngle, fov, rays, castCount: i + 1
@@ -269,7 +269,7 @@ function buildProjection(fovDeg, D0, cols) {
 
   steps.push({ title: 'The Fisheye Problem',
     formula: `raw ray length ≠ true distance to a flat wall`,
-    explain: `Picture a perfectly flat wall straight ahead. A ray fired at an angle δ off-center has to travel <em>farther</em> in a straight line to reach that same flat wall than the ray fired dead-center - pure geometry, not because the wall is actually farther away. Left uncorrected, the rendered wall bulges like it's seen through a fisheye lens.`,
+    explain: `Back in Vector Basics, the distance to a hit point was simply t - the raw Euclidean length of the ray. That works perfectly for a single ray, but a screen is drawn from <em>many</em> rays fired at different angles. Picture a perfectly flat wall straight ahead: a ray fired at an angle δ off-center has to travel <em>farther</em> in a straight line to reach that same flat wall than the ray fired dead-center - pure geometry, not because the wall is actually farther away. Left uncorrected, the rendered wall bulges like it's seen through a fisheye lens.`,
     chips: [['Wall dist (center)', D0, 'c-s'], ['FOV', fovDeg + '°', 'c-q']], ...common, stage: 0 });
 
   steps.push({ title: 'Naive (Euclidean) Distance',

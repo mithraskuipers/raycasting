@@ -164,9 +164,15 @@ select{
   border-radius:var(--radius-sm);padding:7px 11px;font-family:var(--font);font-size:13px;
   cursor:pointer;
 }
-select:focus,input[type=range]:focus{outline:2px solid var(--accent-soft);outline-offset:1px}
+select:focus,input[type=range]:focus,.num-input:focus{outline:2px solid var(--accent-soft);outline-offset:1px}
 input[type=range]{accent-color:var(--accent);width:110px;cursor:pointer}
 .sc-val{font-family:var(--mono);font-size:13px;color:var(--accent);min-width:32px;font-weight:600}
+.num-input{
+  background:var(--surface);border:1px solid var(--border-strong);color:var(--ink);
+  border-radius:var(--radius-sm);padding:7px 9px;font-family:var(--mono);font-size:13px;
+  width:64px;
+}
+.sc-hint{font-size:12px;color:var(--ink3);margin-top:10px;line-height:1.5}
 
 /* ================= BUTTONS ================= */
 .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
