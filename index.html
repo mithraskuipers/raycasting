@@ -11,19 +11,54 @@
 <header>
   <div class="eyebrow">Interactive Graphics Explainer</div>
   <h1>Ray<em>casting</em></h1>
-  <p class="subtitle">Five interactive stops covering the mathematics behind classic raycasting engines - from a single ray-wall intersection to a full corrected 3D projection you can walk around in. Every formula updates live as you step through and tweak the controls.</p>
+  <p class="subtitle">Five interactive stops covering the mathematics behind classic raycasting engines - from a single ray-wall intersection to a full corrected 3D projection you can walk around in. Every formula updates live as you step through and tweak the controls. <b>Work through them in order</b> - each stop leans on the algorithm from the one before it.</p>
 </header>
+</div>
+
+<!-- Learning path - the recommended order to study the five stops, and why
+     each one comes where it does. Not sticky: it's a map you check once at
+     the top, not chrome you need while working through a stop. -->
+<div class="roadmap-bar">
+  <div class="roadmap-inner">
+    <div class="roadmap-label">Recommended order</div>
+    <div class="roadmap-path" id="roadmapPath">
+      <button class="rmp-step" data-mode="vector" onclick="switchMode('vector')">
+        <span class="rmp-num">1</span>
+        <span class="rmp-text"><b>Vector Basics</b>one ray, one wall, solved with algebra</span>
+      </button>
+      <span class="rmp-arrow">→</span>
+      <button class="rmp-step" data-mode="dda" onclick="switchMode('dda')">
+        <span class="rmp-num">2</span>
+        <span class="rmp-text"><b>DDA Algorithm</b>walk a grid instead of solving algebra</span>
+      </button>
+      <span class="rmp-arrow">→</span>
+      <button class="rmp-step" data-mode="multiray" onclick="switchMode('multiray')">
+        <span class="rmp-num">3</span>
+        <span class="rmp-text"><b>Multi-Ray Casting</b>sweep a field of view, one ray per column</span>
+      </button>
+      <span class="rmp-arrow">→</span>
+      <button class="rmp-step" data-mode="projection" onclick="switchMode('projection')">
+        <span class="rmp-num">4</span>
+        <span class="rmp-text"><b>3D Projection</b>fix the fisheye those rays just created</span>
+      </button>
+      <span class="rmp-arrow">→</span>
+      <button class="rmp-step" data-mode="walk" onclick="switchMode('walk')">
+        <span class="rmp-num">5</span>
+        <span class="rmp-text"><b>Walk Mode</b>everything above, live, every frame</span>
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Full-width page navigation bar - jump between the five stops -->
 <nav class="tabbar">
   <div class="tabbar-inner">
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchMode('vector')">📍 Vector Basics</button>
-      <button class="tab-btn" onclick="switchMode('projection')">🧊 3D Projection</button>
-      <button class="tab-btn" onclick="switchMode('dda')">📐 DDA Algorithm</button>
-      <button class="tab-btn" onclick="switchMode('multiray')">🗺️ Multi-Ray Casting</button>
-      <button class="tab-btn" onclick="switchMode('walk')">🚶 Walk Mode</button>
+      <button class="tab-btn active" onclick="switchMode('vector')"><span class="tab-num">1</span>📍 Vector Basics</button>
+      <button class="tab-btn" onclick="switchMode('dda')"><span class="tab-num">2</span>📐 DDA Algorithm</button>
+      <button class="tab-btn" onclick="switchMode('multiray')"><span class="tab-num">3</span>🗺️ Multi-Ray Casting</button>
+      <button class="tab-btn" onclick="switchMode('projection')"><span class="tab-num">4</span>🧊 3D Projection</button>
+      <button class="tab-btn" onclick="switchMode('walk')"><span class="tab-num">5</span>🚶 Walk Mode</button>
     </div>
     <span class="kbd-hint"><kbd>,</kbd> Prev &nbsp;<kbd>.</kbd> Next &nbsp;<kbd>Space</kbd> Play</span>
   </div>
@@ -82,6 +117,13 @@
           </div>
         </div>
 
+        <!-- Shown once the walkthrough for this stop is finished, pointing
+             at the next stop in the recommended order. -->
+        <div class="next-cta" id="nextCta" style="display:none">
+          <div class="next-cta-text">✓ <b id="nextCtaDone"></b> complete</div>
+          <button class="btn primary" id="nextCtaBtn" onclick="goToNextMode()"></button>
+        </div>
+
       </div><!-- #stepTheory -->
 
       <!-- Walk Mode theory (shown only while Walk Mode is active) -->
@@ -99,7 +141,9 @@
           <br><br>
           <b>3. Correct for fisheye.</b> The raw ray length is projected back onto the view axis with <span class="or">cos(δ)</span>, so straight walls stay straight instead of bowing outward at the screen edges.
           <br><br>
-          <b>4. Project to height.</b> Each strip is drawn with <span class="gn">height = k / distance</span> - closer walls fill more of the screen, farther walls shrink and darken.
+          <b>4. Project to height.</b> Each strip is drawn with <span class="gn">height = k / distance</span> - closer walls fill more of the screen, farther walls shrink and darken. Strips also shade slightly differently depending on which axis the ray crossed to hit the wall (the same "side" flag from the DDA tab) - a cheap depth cue that makes adjoining walls read as distinct surfaces instead of one flat blob.
+          <br><br>
+          <b>5. Move and collide.</b> The arrow keys nudge the player's position along its facing direction and rotate that facing - plain vector math, same O and D from Vector Basics. Before a move is accepted, a small collision box around the player is checked against the map; if one axis would clip into a wall it's blocked while the other axis still slides through, so brushing along a wall doesn't feel like hitting a full stop.
         </div>
         <div class="chips">
           <div class="chip c-s"><div class="chip-label">Rays / frame</div><div class="chip-val">1 per column</div></div>
@@ -144,31 +188,6 @@
       </div>
 
 
-      <div class="sc" id="sc-projection">
-        <div class="sc-row">
-          <div class="sc-item"><label>Field of View</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="range" id="proj-fov" min="20" max="100" value="60" oninput="sv('proj-fv',this.value+'°')">
-              <span class="sc-val" id="proj-fv">60°</span>
-            </div>
-          </div>
-          <div class="sc-item"><label>Wall Distance D₀</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="range" id="proj-dist" min="2" max="8" value="4" oninput="sv('proj-dv',this.value)">
-              <span class="sc-val" id="proj-dv">4</span>
-            </div>
-          </div>
-          <div class="sc-item"><label>Screen Columns</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="range" id="proj-cols" min="9" max="33" step="2" value="21" oninput="sv('proj-cv',this.value)">
-              <span class="sc-val" id="proj-cv">21</span>
-            </div>
-          </div>
-          <button class="btn primary" onclick="resetAll()">Apply</button>
-        </div>
-      </div>
-
-
       <div class="sc" id="sc-dda">
         <div class="sc-row">
           <div class="sc-item"><label>Map</label>
@@ -179,8 +198,8 @@
           </div>
           <div class="sc-item"><label>Ray Angle θ</label>
             <div style="display:flex;align-items:center;gap:6px">
-              <input type="range" id="dda-angle" min="0" max="359" value="35" oninput="sv('dda-av',this.value+'°')">
-              <span class="sc-val" id="dda-av">35°</span>
+              <input type="range" id="dda-angle" min="0" max="359" value="130" oninput="sv('dda-av',this.value+'°')">
+              <span class="sc-val" id="dda-av">130°</span>
             </div>
           </div>
           <button class="btn primary" onclick="resetAll()">Apply</button>
@@ -212,6 +231,31 @@
             <div style="display:flex;align-items:center;gap:6px">
               <input type="range" id="mr-rays" min="6" max="36" value="18" oninput="sv('mr-rv',this.value)">
               <span class="sc-val" id="mr-rv">18</span>
+            </div>
+          </div>
+          <button class="btn primary" onclick="resetAll()">Apply</button>
+        </div>
+      </div>
+
+
+      <div class="sc" id="sc-projection">
+        <div class="sc-row">
+          <div class="sc-item"><label>Field of View</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-fov" min="20" max="100" value="60" oninput="sv('proj-fv',this.value+'°')">
+              <span class="sc-val" id="proj-fv">60°</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Wall Distance D₀</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-dist" min="2" max="8" value="4" oninput="sv('proj-dv',this.value)">
+              <span class="sc-val" id="proj-dv">4</span>
+            </div>
+          </div>
+          <div class="sc-item"><label>Screen Columns</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="proj-cols" min="9" max="33" step="2" value="21" oninput="sv('proj-cv',this.value)">
+              <span class="sc-val" id="proj-cv">21</span>
             </div>
           </div>
           <button class="btn primary" onclick="resetAll()">Apply</button>

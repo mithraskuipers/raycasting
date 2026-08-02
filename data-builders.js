@@ -29,6 +29,18 @@ const MAPS = {
 };
 
 /* ------------------------------------------------
+   Default spawn points for the DDA and Multi-Ray
+   tabs - picked to sit in open interior space, away
+   from any wall, so rays travel varied, interesting
+   distances by default instead of hitting a wall
+   almost immediately.
+   ------------------------------------------------ */
+const RAYCAST_SPAWN = {
+  simple: { x: 4.5, y: 4.5 },
+  maze:   { x: 3.5, y: 5.5 }
+};
+
+/* ------------------------------------------------
    Ray vs. line-segment intersection (2D cross-
    product / Cramer's-rule method). O,D define the
    ray; A,B define the wall segment.
@@ -168,7 +180,8 @@ function buildVectorBasics(wallKey, angleDeg, originOverride) {
    ------------------------------------------------ */
 function buildDDA(mapKey, angleDeg, playerOverride) {
   const map = MAPS[mapKey] || MAPS.simple;
-  const px = playerOverride ? playerOverride.x : 1.5, py = playerOverride ? playerOverride.y : 1.5;
+  const spawn = RAYCAST_SPAWN[mapKey] || RAYCAST_SPAWN.simple;
+  const px = playerOverride ? playerOverride.x : spawn.x, py = playerOverride ? playerOverride.y : spawn.y;
   const angle = angleDeg * Math.PI / 180;
   const res = castRayDDA(map, px, py, angle);
   const steps = [];
@@ -177,7 +190,7 @@ function buildDDA(mapKey, angleDeg, playerOverride) {
 
   push('The Grid',
     `map[y][x] ∈ { open, wall }`,
-    `Vector Basics solved one ray against one wall segment algebraically - but a real map has dozens of segments, and every ray would need to be tested against every one of them. Raycasting engines sidestep this by representing the world as a grid of cells rather than raw geometry. Instead of testing every wall's shape, we walk cell-by-cell along the ray until we land on a wall cell. This walk is the <b>DDA</b> algorithm (Digital Differential Analyzer), and - conveniently - it will hand us back the corrected, non-fisheye distance from the Projection tab for free.`,
+    `Vector Basics solved one ray against one wall segment algebraically - but a real map has dozens of segments, and every ray would need to be tested against every one of them. Raycasting engines sidestep this by representing the world as a grid of cells rather than raw geometry. Instead of testing every wall's shape, we walk cell-by-cell along the ray until we land on a wall cell. This walk is the <b>DDA</b> algorithm (Digital Differential Analyzer), and - conveniently - it will hand us back a distance that's already immune to the fisheye distortion you'll meet a couple of stops from now, in 3D Projection - for free.`,
     [['Grid size', `${map[0].length}×${map.length}`, 'c-s'], ['Player', `(${px}, ${py})`, 'c-s']], -1);
 
   push('Step Size per Axis',
@@ -203,7 +216,7 @@ function buildDDA(mapKey, angleDeg, playerOverride) {
 
   push('Perpendicular Distance',
     `perpDist = t = ${res.perpDist.toFixed(3)}`,
-    `As introduced in the Projection tab, we need the corrected perpendicular distance, not the raw diagonal ray length. The last crossing distance <b>is already</b> that corrected value - because we measured it along the grid axes instead of the raw diagonal. This single number decides how tall the wall is drawn.`,
+    `A couple of stops from now, in 3D Projection, you'll see why the raw diagonal ray length gets distorted once many rays are fired at different angles - and why what we actually need is a "corrected" perpendicular distance instead. The good news: the last crossing distance here <b>is already</b> that corrected value - because we measured it along the grid axes instead of the raw diagonal. This single number decides how tall the wall is drawn.`,
     [['perpDist', res.perpDist.toFixed(3), 'c-e'], ['side', res.side === 0 ? 'X' : 'Y', 'c-q']],
     res.iterations.length);
 
@@ -216,7 +229,8 @@ function buildDDA(mapKey, angleDeg, playerOverride) {
    ------------------------------------------------ */
 function buildMultiRay(mapKey, fovDeg, rayCount, angleDeg, playerOverride) {
   const map = MAPS[mapKey] || MAPS.simple;
-  const px = playerOverride ? playerOverride.x : 2.5, py = playerOverride ? playerOverride.y : 2.5;
+  const spawn = RAYCAST_SPAWN[mapKey] || RAYCAST_SPAWN.simple;
+  const px = playerOverride ? playerOverride.x : spawn.x, py = playerOverride ? playerOverride.y : spawn.y;
   const baseAngle = angleDeg * Math.PI / 180;
   const fov = fovDeg * Math.PI / 180;
   const rays = [];
@@ -238,7 +252,7 @@ function buildMultiRay(mapKey, fovDeg, rayCount, angleDeg, playerOverride) {
     steps.push({
       title: `Casting Ray ${i + 1} / ${rayCount}`,
       formula: `θ<sub>${i}</sub> = facing − FOV/2 + ${i}·(FOV/${rayCount - 1}) = ${(r.angle * 180 / Math.PI).toFixed(1)}°`,
-      explain: `This ray lands on the ${r.side === 0 ? 'X-side (vertical face)' : 'Y-side (horizontal face)'} of a wall, corrected distance ${r.dist.toFixed(2)}. Closer walls get drawn taller - the exact height mapping you saw back in the Projection tab.`,
+      explain: `This ray lands on the ${r.side === 0 ? 'X-side (vertical face)' : 'Y-side (horizontal face)'} of a wall, corrected distance ${r.dist.toFixed(2)}. Closer walls get drawn taller - the next stop, 3D Projection, derives exactly why raw ray length needs a fisheye fix first, and shows the height formula behind this.`,
       chips: [['Ray #', i + 1, 'c-s'], ['Angle', (r.angle * 180 / Math.PI).toFixed(1) + '°', 'c-a'],
                ['Distance', r.dist.toFixed(2), 'c-r'], ['Side', r.side === 0 ? 'X' : 'Y', 'c-q']],
       map, px, py, baseAngle, fov, rays, castCount: i + 1
@@ -266,44 +280,83 @@ function buildProjection(fovDeg, D0, cols) {
 
   const common = { fov, fovDeg, D0, cols, deltas, naive, corrected, screenW, projPlaneDist, edgeDelta, edgeNaive, edgeCorrected };
   const steps = [];
+  const push = (title, formula, explain, chips, extra) =>
+    steps.push(Object.assign({ title, formula, explain, chips }, common, extra));
 
-  steps.push({ title: 'The Fisheye Problem',
-    formula: `raw ray length ≠ true distance to a flat wall`,
-    explain: `Back in Vector Basics, the distance to a hit point was simply t - the raw Euclidean length of the ray. That works perfectly for a single ray, but a screen is drawn from <em>many</em> rays fired at different angles. Picture a perfectly flat wall straight ahead: a ray fired at an angle δ off-center has to travel <em>farther</em> in a straight line to reach that same flat wall than the ray fired dead-center - pure geometry, not because the wall is actually farther away. Left uncorrected, the rendered wall bulges like it's seen through a fisheye lens.`,
-    chips: [['Wall dist (center)', D0, 'c-s'], ['FOV', fovDeg + '°', 'c-q']], ...common, stage: 0 });
+  push('The Fisheye Problem',
+    `raw ray length ≠ true distance to a flat wall`,
+    `Back in Vector Basics, the distance to a hit point was simply t - the raw Euclidean length of the ray. That works perfectly for a single ray, but as you just saw in Multi-Ray Casting, a screen is drawn from <em>many</em> rays fired at different angles at once - one per screen column, fanned out below. Picture a perfectly flat wall straight ahead: a ray fired at an angle δ off-center has to travel <em>farther</em> in a straight line to reach that same flat wall than the ray fired dead-center - pure geometry, not because the wall is actually farther away. Left uncorrected, the rendered wall looks like it's seen through a fisheye lens: tall and close in the middle, sagging shorter toward the edges even though every ray is hitting the same flat surface. We're about to build that distorted view <b>one ray at a time</b>, then build the fixed version the same way, so you can watch exactly where the bow comes from and exactly how the fix removes it.`,
+    [['Wall dist (center)', D0, 'c-s'], ['FOV', fovDeg + '°', 'c-q'], ['Columns', cols, 'c-r']],
+    { stage: 'intro', revealNaive: 0, revealCorrected: 0 });
 
-  steps.push({ title: 'Naive (Euclidean) Distance',
-    formula: `naive(δ) = D₀ / cos(δ)`,
-    explain: `At the edge of the FOV, δ = ${(edgeDelta * 180 / Math.PI).toFixed(1)}°, so the raw ray length is D₀/cos(δ) = ${edgeNaive.toFixed(2)} - longer than the ${D0} straight ahead, even though the wall is equally far away in any meaningful sense.`,
-    chips: [['δ (edge)', (edgeDelta * 180 / Math.PI).toFixed(1) + '°', 'c-a'], ['naive dist', edgeNaive.toFixed(2), 'c-red']],
-    ...common, stage: 1 });
+  push('The Naive (Euclidean) Formula',
+    `naive(δ) = D₀ / cos(δ)`,
+    `Every column's ray is fired at its own angle δ, measured from dead-center. Plugging δ straight into D₀/cos(δ) gives that ray's raw, uncorrected length - larger the farther δ is from 0, in either direction. We'll now cast all ${cols} of these rays, left column to right, and watch each bar land.`,
+    [['Formula', 'D₀ / cos(δ)', 'c-a'], ['δ range', `±${(edgeDelta * 180 / Math.PI).toFixed(1)}°`, 'c-q']],
+    { stage: 'naive-formula', revealNaive: 0, revealCorrected: 0 });
 
-  steps.push({ title: 'Corrected (Perpendicular) Distance',
-    formula: `corrected(δ) = naive(δ) · cos(δ) = D₀`,
-    explain: `Multiplying back by cos(δ) projects the ray length onto the player's forward axis, exactly cancelling the distortion. The result is constant - D₀ - for every column, which is correct: the wall really is flat.`,
-    chips: [['corrected dist', edgeCorrected.toFixed(2), 'c-e'], ['constant?', 'Yes - always D₀', 'c-s']],
-    ...common, stage: 2 });
+  for (let i = 0; i < cols; i++) {
+    const d = deltas[i], n = naive[i];
+    const centerish = Math.abs(d) < 1e-6;
+    push(`Casting Naive Ray ${i + 1} / ${cols}`,
+      `δ<sub>${i}</sub> = ${(d * 180 / Math.PI).toFixed(1)}° &nbsp;→&nbsp; naive = D₀/cos(δ) = ${n.toFixed(2)}`,
+      centerish
+        ? `This is the dead-center column: δ = 0°, so cos(δ) = 1 and the naive distance is just D₀ = ${D0} - no distortion here, which is why the fisheye bow always looks worst at the edges and vanishes in the middle.`
+        : `Column ${i + 1} sits at δ = ${(d * 180 / Math.PI).toFixed(1)}° off-center. Its naive distance comes out to ${n.toFixed(2)} - ${n > D0 + 0.005 ? 'longer than' : 'about equal to'} the straight-ahead distance D₀ = ${D0}, purely because of the angle. Watch the bar for this column land in the "Naive (Fisheye)" panel, a little shorter than its center-column neighbors.`,
+      [['Ray #', i + 1, 'c-s'], ['δ', (d * 180 / Math.PI).toFixed(1) + '°', 'c-a'], ['naive dist', n.toFixed(2), 'c-red']],
+      { stage: 'naive-build', revealNaive: i + 1, revealCorrected: 0, rayIndex: i });
+  }
 
-  steps.push({ title: 'Wall Height on Screen',
-    formula: `lineHeight = (wallHeight · projPlaneDist) / distance`,
-    explain: `Screen-space wall height is inversely proportional to distance - twice as far means half as tall. wallHeight is a tile's real-world height (usually 1); distance must always be the <em>corrected</em> value, never the naive one.`,
-    chips: [['wallHeight', 1, 'c-q'], ['uses', 'corrected dist', 'c-e']], ...common, stage: 3 });
+  push('Naive View Complete — the Fisheye Bow',
+    `all ${cols} columns drawn with naive(δ)`,
+    `Every column is now cast and drawn. Look at the "Naive (Fisheye)" panel: its roofline dips down toward both edges even though the wall is perfectly flat - that dip is the fisheye distortion, built entirely out of the D₀/cos(δ) formula you just walked through, ray by ray.`,
+    [['Columns cast', cols, 'c-s'], ['Shape', 'bowed / curved', 'c-red']],
+    { stage: 'naive-complete', revealNaive: cols, revealCorrected: 0 });
 
-  steps.push({ title: 'Projection Plane Distance',
-    formula: `projPlaneDist = (screenWidth / 2) / tan(FOV/2)`,
-    explain: `This constant turns the abstract "1 unit away = 1 unit tall" scale into real screen pixels, based on screen width and field of view. For a ${screenW}px view at ${fovDeg}° FOV, projPlaneDist ≈ ${projPlaneDist.toFixed(1)}px.`,
-    chips: [['screenWidth', screenW + 'px', 'c-s'], ['projPlaneDist', projPlaneDist.toFixed(1) + 'px', 'c-e']],
-    ...common, stage: 4 });
+  push('The Corrected (Perpendicular) Formula',
+    `corrected(δ) = naive(δ) · cos(δ) = D₀`,
+    `Multiplying each ray's naive distance back by cos(δ) projects it onto the player's forward axis, exactly cancelling the 1/cos(δ) growth. For every column the result collapses to the same number, D₀ - which is correct, since the wall really is flat and equally far away in every direction that matters. Let's re-cast the same ${cols} rays and correct each one as it lands.`,
+    [['Formula', 'naive(δ)·cos(δ)', 'c-e'], ['Expected result', 'D₀ for every ray', 'c-e']],
+    { stage: 'corrected-formula', revealNaive: cols, revealCorrected: 0 });
 
-  steps.push({ title: 'Side-by-Side Comparison',
-    formula: `height(δ) ∝ 1 / distance(δ)`,
-    explain: `Rendering the flat wall with naive distances produces a bowed, fisheye-warped silhouette. Rendering it with corrected distances produces a perfectly flat wall - exactly what we'd actually expect to see.`,
-    chips: [['Naive', 'bowed / curved', 'c-red'], ['Corrected', 'flat / straight', 'c-e']], ...common, stage: 5 });
+  for (let i = 0; i < cols; i++) {
+    const d = deltas[i], n = naive[i], c = corrected[i];
+    push(`Correcting Ray ${i + 1} / ${cols}`,
+      `corrected<sub>${i}</sub> = ${n.toFixed(2)} · cos(${(d * 180 / Math.PI).toFixed(1)}°) = ${c.toFixed(2)}`,
+      `Ray ${i + 1}'s naive distance of ${n.toFixed(2)} gets multiplied by cos(δ) and collapses back to ${c.toFixed(2)} ≈ D₀ = ${D0}. Watch the "Corrected" panel: this column's bar snaps to the same flat height as every column beside it - the bow disappears one column at a time.`,
+      [['Ray #', i + 1, 'c-s'], ['naive', n.toFixed(2), 'c-red'], ['corrected', c.toFixed(2), 'c-e']],
+      { stage: 'corrected-build', revealNaive: cols, revealCorrected: i + 1, rayIndex: i });
+  }
 
-  steps.push({ title: 'Putting It Together',
-    formula: `for each column: cast ray → DDA perpDist → lineHeight = k / perpDist`,
-    explain: `This is the full pipeline used by classic raycasting engines: one DDA ray per screen column, a corrected distance, then a simple inverse-distance height formula - fast enough to run in real time on decades-old hardware.`,
-    chips: [['Columns', cols, 'c-s'], ['Pipeline', 'ray → DDA → height', 'c-e']], ...common, stage: 6 });
+  push('Corrected View Complete — Flat At Last',
+    `all ${cols} columns drawn with corrected(δ) = D₀`,
+    `All ${cols} columns now use the corrected distance. The "Corrected" panel's roofline is dead flat, column to column - exactly what a real flat wall should look like from every angle in the field of view, not just dead-center.`,
+    [['Columns cast', cols, 'c-s'], ['Shape', 'flat / straight', 'c-e']],
+    { stage: 'corrected-complete', revealNaive: cols, revealCorrected: cols });
+
+  push('Wall Height on Screen',
+    `lineHeight = (wallHeight · projPlaneDist) / distance`,
+    `Screen-space wall height is inversely proportional to distance - twice as far means half as tall. wallHeight is a tile's real-world height (usually 1); distance must always be the <em>corrected</em> value you just finished building, never the naive one.`,
+    [['wallHeight', 1, 'c-q'], ['uses', 'corrected dist', 'c-e']],
+    { stage: 'height', revealNaive: cols, revealCorrected: cols });
+
+  push('Projection Plane Distance',
+    `projPlaneDist = (screenWidth / 2) / tan(FOV/2)`,
+    `This constant turns the abstract "1 unit away = 1 unit tall" scale into real screen pixels, based on screen width and field of view. For a ${screenW}px view at ${fovDeg}° FOV, projPlaneDist ≈ ${projPlaneDist.toFixed(1)}px.`,
+    [['screenWidth', screenW + 'px', 'c-s'], ['projPlaneDist', projPlaneDist.toFixed(1) + 'px', 'c-e']],
+    { stage: 'projplane', revealNaive: cols, revealCorrected: cols });
+
+  push('Side-by-Side Comparison',
+    `height(δ) ∝ 1 / distance(δ)`,
+    `You've now built both views ray by ray: naive distances produce a bowed, fisheye-warped silhouette, corrected distances produce a perfectly flat wall - exactly what we'd actually expect to see. The chart above plots the same story in numbers - naive and corrected distance both start equal at the center and only diverge toward the edges.`,
+    [['Naive', 'bowed / curved', 'c-red'], ['Corrected', 'flat / straight', 'c-e']],
+    { stage: 'compare', revealNaive: cols, revealCorrected: cols });
+
+  push('Putting It Together',
+    `for each column: cast ray → DDA perpDist → lineHeight = k / perpDist`,
+    `This is the full pipeline used by classic raycasting engines: one DDA ray per screen column, a corrected distance, then a simple inverse-distance height formula - fast enough to run in real time on decades-old hardware.`,
+    [['Columns', cols, 'c-s'], ['Pipeline', 'ray → DDA → height', 'c-e']],
+    { stage: 'pipeline', revealNaive: cols, revealCorrected: cols });
 
   return steps;
 }

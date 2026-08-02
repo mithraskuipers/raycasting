@@ -145,8 +145,8 @@ function setupCharts() {
     area.innerHTML = `
       <div class="scene-box" style="margin-bottom:12px"><canvas id="p-top"></canvas></div>
       <div class="chart-grid cols-2" style="margin-bottom:12px">
-        <div class="chart-box screen"><h4>Naive (Fisheye)</h4><div class="chart-inner"><canvas id="p-naive-3d"></canvas></div></div>
-        <div class="chart-box screen"><h4>Corrected (Perpendicular)</h4><div class="chart-inner"><canvas id="p-corrected-3d"></canvas></div></div>
+        <div class="chart-box screen"><h4 id="p-naive-h4">Naive (Fisheye)</h4><div class="chart-inner"><canvas id="p-naive-3d"></canvas></div></div>
+        <div class="chart-box screen"><h4 id="p-corrected-h4">Corrected (Perpendicular)</h4><div class="chart-inner"><canvas id="p-corrected-3d"></canvas></div></div>
       </div>
       <div class="chart-box wide"><h4>Distance vs. Ray Angle</h4><div class="chart-inner"><canvas id="p-chart"></canvas></div></div>`;
     bindProjectionDrag();
@@ -513,53 +513,133 @@ function renderProjectionScene(s) {
     ctx.beginPath(); ctx.moveTo(ox, wallY); ctx.lineTo(ox + worldW * scale, wallY); ctx.stroke();
     label(ctx, 'wall', ox + 4, wallY - 6, '#6338bf');
 
-    const edgeX = playerX + Math.tan(s.edgeDelta) * s.D0;
-    const ex = ox + edgeX * scale;
+    // Fan out EVERY ray in the sweep (not just the center + one edge ray) so
+    // it's visually obvious this is a multi-ray cast, one ray per screen
+    // column, all aimed at the same flat wall from slightly different angles.
+    if (s.deltas && s.deltas.length > 1) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = s.revealNaive > 0 ? 'rgba(193,56,44,.2)' : 'rgba(44,75,219,.2)';
+      s.deltas.forEach(d => {
+        const rx = ox + (playerX + Math.tan(d) * s.D0) * scale;
+        ctx.beginPath(); ctx.moveTo(px2, py2); ctx.lineTo(rx, wallY); ctx.stroke();
+      });
+      ctx.restore();
+    }
 
-    if (s.stage < 1) {
+    // Highlight the one ray this step is actively casting or correcting.
+    if (s.rayIndex !== undefined && s.rayIndex !== null && s.deltas) {
+      const d = s.deltas[s.rayIndex];
+      const rx = ox + (playerX + Math.tan(d) * s.D0) * scale;
+      const isCorrecting = s.stage === 'corrected-build';
+      ctx.strokeStyle = isCorrecting ? '#157a5e' : '#c1382c';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.moveTo(px2, py2); ctx.lineTo(rx, wallY); ctx.stroke();
+      label(ctx, (isCorrecting ? 'correcting ray ' : 'naive ray ') + (s.rayIndex + 1), rx - 40, wallY - 8, isCorrecting ? '#157a5e' : '#c1382c', 11);
+    } else if (s.stage === 'intro') {
+      // Before anything's been cast, show just the plain straight-ahead line.
       ctx.strokeStyle = '#2c4bdb'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(px2, py2); ctx.lineTo(ox + playerX * scale, wallY); ctx.stroke();
-    }
-    if (s.stage >= 1) {
-      ctx.strokeStyle = '#c1382c'; ctx.lineWidth = 2.2;
-      ctx.beginPath(); ctx.moveTo(px2, py2); ctx.lineTo(ex, wallY); ctx.stroke();
-      label(ctx, 'naive', ex - 30, wallY - 8, '#c1382c');
-    }
-    if (s.stage >= 2) {
-      ctx.save(); ctx.setLineDash([4, 3]);
-      ctx.strokeStyle = '#157a5e'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(ex, wallY); ctx.lineTo(ex, py2); ctx.stroke();
-      ctx.restore();
-      ctx.strokeStyle = '#157a5e'; ctx.lineWidth = 2.2;
-      ctx.beginPath(); ctx.moveTo(px2, py2); ctx.lineTo(ox + playerX * scale, wallY); ctx.stroke();
-      label(ctx, 'corrected', ox + playerX * scale + 6, wallY + 14, '#157a5e');
     }
     drawPoint(ctx, playerX, playerY, ox, oy, scale, '#2c4bdb', 5);
   }
 
-  const showCompare = s.stage >= 5;
-  ['p-naive-3d', 'p-corrected-3d'].forEach((id, which) => {
+  // The naive (fisheye) render is built up ray by ray from the first naive
+  // step onward, so the distortion is visible taking shape column by column,
+  // not just described in prose. The corrected render stays locked until its
+  // own build sequence starts, then fills in the same way, ray by ray.
+  const naiveDone = s.revealNaive >= s.cols;
+  const correctedStarted = s.revealCorrected > 0;
+  const correctedDone = s.revealCorrected >= s.cols;
+  const naiveH4 = document.getElementById('p-naive-h4');
+  const correctedH4 = document.getElementById('p-corrected-h4');
+  if (naiveH4) {
+    naiveH4.textContent = s.stage === 'intro' ? 'Naive (Fisheye) — about to build it, ray by ray'
+      : naiveDone ? 'Naive (Fisheye) — complete, watch it bow'
+      : `Naive (Fisheye) — casting… (${s.revealNaive}/${s.cols})`;
+  }
+  if (correctedH4) {
+    correctedH4.textContent = !correctedStarted ? 'Corrected — 🔒 not built yet'
+      : correctedDone ? 'Corrected (Perpendicular) — complete'
+      : `Corrected — fixing… (${s.revealCorrected}/${s.cols})`;
+  }
+
+  function drawWallProfile(id, arr, revealCount, color, glow, tag, activeIndex) {
     const p = prepCanvas(id); if (!p) return;
     const { ctx, w, h } = p;
     clearScene(ctx, w, h);
     ctx.fillStyle = '#0f1526'; ctx.fillRect(0, 0, w, h);
-    if (!showCompare) return;
-    const arr = which === 0 ? s.naive : s.corrected;
     const colW = w / arr.length;
+    // Scale every bar relative to the shortest distance in THIS array (the
+    // center ray), not a fixed constant - a fixed constant saturates every
+    // bar at max height for realistic distances/FOVs and hides the curve
+    // entirely (the bug the user hit). Relative scaling always shows the
+    // true bow: naive bars shrink toward the edges (1/cos falloff),
+    // corrected bars stay dead flat, no matter the wall distance or FOV.
+    const minD = Math.min(...arr);
+    const maxBarFrac = 0.86;
+    const tops = [];
     arr.forEach((d, i) => {
-      const hh = Math.min(1, (s.D0 * 2.5) / Math.max(d, 0.3)) * h;
-      ctx.fillStyle = which === 0 ? 'rgba(224,101,90,.7)' : 'rgba(60,178,148,.7)';
-      ctx.fillRect(i * colW, (h - hh) / 2, colW + 1, hh);
+      const revealed = i < revealCount;
+      const hh = Math.max(8, (minD / Math.max(d, 0.01)) * maxBarFrac * h);
+      const top = (h - hh) / 2;
+      tops.push(revealed ? top : null);
+      if (revealed) {
+        ctx.fillStyle = color;
+        ctx.fillRect(i * colW, top, colW + 1, hh);
+        if (activeIndex === i) {
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+          ctx.strokeRect(i * colW + 0.75, top + 0.75, colW - 0.5, hh - 1.5);
+        }
+      } else {
+        // Not cast yet this walkthrough - a faint placeholder so the
+        // "ray by ray" build reads as filling in left-to-right.
+        ctx.fillStyle = 'rgba(255,255,255,.045)';
+        ctx.fillRect(i * colW, h * 0.42, colW + 1, h * 0.16);
+      }
     });
-  });
+    // Outline the roofline so the bulge (or lack of one) reads at a glance,
+    // not just as a bar-height difference. Only spans the revealed portion.
+    if (revealCount > 0) {
+      ctx.strokeStyle = glow; ctx.lineWidth = 2;
+      ctx.beginPath();
+      let started = false;
+      tops.forEach((t, i) => {
+        if (t === null) return;
+        const x = i * colW + colW / 2;
+        if (!started) { ctx.moveTo(x, t); started = true; } else ctx.lineTo(x, t);
+      });
+      ctx.stroke();
+    }
+    label(ctx, tag, 10, 18, glow, 11);
+    if (revealCount < arr.length) label(ctx, `${revealCount} / ${arr.length} rays cast`, 10, h - 10, '#5b6684', 10.5);
+  }
 
-  if (s.stage >= 1) {
+  drawWallProfile('p-naive-3d', s.naive, s.revealNaive, 'rgba(224,101,90,.7)', '#ff9c8a', '⚠ curves — but the wall is flat',
+    s.stage === 'naive-build' ? s.rayIndex : null);
+
+  if (!correctedStarted) {
+    const pc = prepCanvas('p-corrected-3d');
+    if (pc) {
+      const { ctx, w, h } = pc;
+      clearScene(ctx, w, h);
+      ctx.fillStyle = '#0f1526'; ctx.fillRect(0, 0, w, h);
+      label(ctx, '🔒 fix applied ray by ray in the next steps', 14, h / 2, '#5b6684', 12);
+    }
+  } else {
+    drawWallProfile('p-corrected-3d', s.corrected, s.revealCorrected, 'rgba(60,178,148,.7)', '#7cf0cd', '✓ flat — matches the real wall',
+      s.stage === 'corrected-build' ? s.rayIndex : null);
+  }
+
+  if (s.stage !== 'intro') {
+    const naiveData = s.naive.map((v, i) => i < s.revealNaive ? v : null);
+    const correctedData = s.corrected.map((v, i) => i < s.revealCorrected ? v : null);
     canvasChart('p-chart', {
       type: 'line', legend: true,
       labels: s.deltas.map(d => (d * 180 / Math.PI).toFixed(0) + '°'),
       datasets: [
-        { label: 'Naive distance', data: s.naive, color: '#c1382c', width: 2, dots: false },
-        { label: 'Corrected distance', data: s.corrected, color: '#157a5e', width: 2, dots: false }
+        { label: 'Naive distance', data: naiveData, color: '#c1382c', width: 2, dots: false },
+        { label: 'Corrected distance', data: correctedData, color: '#157a5e', width: 2, dots: false }
       ]
     });
   }

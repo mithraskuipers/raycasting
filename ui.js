@@ -7,7 +7,14 @@
 
 let mode = 'vector', cur = 0, total = 0, stepsData = [], playing = false, playTimer = null;
 const charts = {};
-const MODES = ['vector', 'projection', 'dda', 'multiray', 'walk'];
+/* Order = the recommended learning path: each stop leans on the one before it.
+   Vector Basics (ray/wall algebra) -> DDA (grid-walk algorithm, still one ray)
+   -> Multi-Ray (sweep that algorithm across a whole field of view, which is
+   what makes the fisheye distortion show up) -> 3D Projection (explain and
+   fix that distortion) -> Walk Mode (all four, live). */
+const MODES = ['vector', 'dda', 'multiray', 'projection', 'walk'];
+const MODE_LABELS = { vector: 'Vector Basics', dda: 'DDA Algorithm', multiray: 'Multi-Ray Casting', projection: '3D Projection', walk: 'Walk Mode' };
+const NEXT_MODE = { vector: 'dda', dda: 'multiray', multiray: 'projection', projection: 'walk', walk: null };
 
 /* Origin/player positions set by dragging on the top-down scenes.
    null means "use the mode's default / slider-driven position". */
@@ -47,7 +54,7 @@ function buildTableHead() {
   if (mode === 'vector') th.innerHTML = '<tr><th>Step</th><th>Concept</th><th>Details</th></tr>';
   else if (mode === 'dda') th.innerHTML = '<tr><th>Step</th><th>Cell (x,y)</th><th>Axis</th><th>t (distance)</th><th>Hit?</th></tr>';
   else if (mode === 'multiray') th.innerHTML = '<tr><th>Ray</th><th>Angle</th><th>Distance</th><th>Side</th></tr>';
-  else th.innerHTML = '<tr><th>Stage</th><th>δ (edge)</th><th>Naive dist</th><th>Corrected dist</th></tr>';
+  else th.innerHTML = '<tr><th>Step</th><th>Ray / δ</th><th>Naive dist</th><th>Corrected dist</th></tr>';
 }
 
 function makeRow(i) {
@@ -67,7 +74,12 @@ function makeRow(i) {
     const r = s.rays[i - 1];
     return `<td>${i}</td><td style="color:#a8710f">${(r.angle * 180 / Math.PI).toFixed(1)}°</td><td style="color:#157a5e">${r.dist.toFixed(2)}</td><td style="color:#2c4bdb">${r.side === 0 ? 'X' : 'Y'}</td>`;
   } else {
-    return `<td>${i}</td><td style="color:#a8710f">${(s.edgeDelta * 180 / Math.PI).toFixed(1)}°</td><td style="color:#c1382c">${s.edgeNaive.toFixed(2)}</td><td style="color:#157a5e">${s.edgeCorrected.toFixed(2)}</td>`;
+    if (s.rayIndex !== undefined && s.rayIndex !== null) {
+      const d = s.deltas[s.rayIndex];
+      const correctedKnown = s.revealCorrected > s.rayIndex;
+      return `<td>${i}</td><td style="color:#a8710f">Ray ${s.rayIndex + 1} · ${(d * 180 / Math.PI).toFixed(1)}°</td><td style="color:#c1382c">${s.naive[s.rayIndex].toFixed(2)}</td><td style="color:${correctedKnown ? '#157a5e' : '#8791a3'}">${correctedKnown ? s.corrected[s.rayIndex].toFixed(2) : '—'}</td>`;
+    }
+    return `<td>${i}</td><td colspan="3" style="color:#8791a3">${s.title || ''}</td>`;
   }
 }
 
@@ -111,6 +123,18 @@ function refreshDots() {
 }
 
 /* ------------------------------------------------
+   Learning-path roadmap (top-of-page order guide)
+   ------------------------------------------------ */
+function refreshRoadmap() {
+  const curIdx = MODES.indexOf(mode);
+  document.querySelectorAll('.rmp-step').forEach(el => {
+    const idx = MODES.indexOf(el.dataset.mode);
+    el.classList.toggle('active', idx === curIdx);
+    el.classList.toggle('done', idx < curIdx);
+  });
+}
+
+/* ------------------------------------------------
    Master UI refresh
    ------------------------------------------------ */
 function updateUI() {
@@ -133,6 +157,22 @@ function updateUI() {
   document.getElementById('btnPrev').disabled = cur <= 0;
   document.getElementById('btnNext').disabled = cur >= total;
   refreshDots(); renderFormula(); renderExplain(); renderChips(); renderCharts(); refreshTable();
+
+  const nextCta = document.getElementById('nextCta');
+  if (nextCta) {
+    const finished = cur >= total;
+    nextCta.style.display = finished ? 'flex' : 'none';
+    if (finished) {
+      document.getElementById('nextCtaDone').textContent = MODE_LABELS[mode];
+      const n = NEXT_MODE[mode];
+      document.getElementById('nextCtaBtn').textContent = n ? ('Continue to ' + MODE_LABELS[n] + ' →') : 'Done';
+    }
+  }
+}
+
+function goToNextMode() {
+  const n = NEXT_MODE[mode];
+  if (n) switchMode(n);
 }
 
 /* ------------------------------------------------
@@ -166,6 +206,7 @@ function switchMode(m) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', MODES[i] === m));
   document.querySelectorAll('.sc').forEach(el => el.classList.remove('active'));
   document.getElementById('sc-' + m).classList.add('active');
+  refreshRoadmap();
   toggleModeUI(m === 'walk');
   if (m === 'walk') startWalkMode();
   else resetAll();
@@ -319,4 +360,5 @@ window.addEventListener('resize', () => {
    Boot
    ------------------------------------------------ */
 resetAll();
+refreshRoadmap();
 bindWalkMapDrag();
