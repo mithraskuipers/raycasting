@@ -11,7 +11,7 @@
 <header>
   <div class="eyebrow">Interactive Graphics Explainer</div>
   <h1>Ray<em>casting</em></h1>
-  <p class="subtitle">Five interactive stops covering the mathematics behind classic raycasting engines - from a single ray-wall intersection to a full corrected 3D projection you can walk around in. Every formula updates live as you step through and tweak the controls. <b>Work through them in order</b> - each stop leans on the algorithm from the one before it.</p>
+  <p class="subtitle">Six interactive stops covering the mathematics behind classic raycasting engines - from a single ray-wall intersection to a full corrected 3D projection you can walk around in, then a dedicated stop for sampling real textures onto those walls. Every formula updates live as you step through and tweak the controls. <b>Work through them in order</b> - each stop leans on the algorithm from the one before it.</p>
 </header>
 </div>
 
@@ -46,6 +46,11 @@
         <span class="rmp-num">5</span>
         <span class="rmp-text"><b>Walk Mode</b>everything above, live, every frame</span>
       </button>
+      <span class="rmp-arrow">→</span>
+      <button class="rmp-step" data-mode="textures" onclick="switchMode('textures')">
+        <span class="rmp-num">6</span>
+        <span class="rmp-text"><b>Wall Textures</b>sample an image instead of a flat color</span>
+      </button>
     </div>
   </div>
 </div>
@@ -59,6 +64,7 @@
       <button class="tab-btn" onclick="switchMode('multiray')"><span class="tab-num">3</span>🗺️ Multi-Ray Casting</button>
       <button class="tab-btn" onclick="switchMode('projection')"><span class="tab-num">4</span>🧊 3D Projection</button>
       <button class="tab-btn" onclick="switchMode('walk')"><span class="tab-num">5</span>🚶 Walk Mode</button>
+      <button class="tab-btn" onclick="switchMode('textures')"><span class="tab-num">6</span>🧱 Wall Textures</button>
     </div>
     <span class="kbd-hint"><kbd>,</kbd> Prev &nbsp;<kbd>.</kbd> Next &nbsp;<kbd>Space</kbd> Play</span>
   </div>
@@ -154,6 +160,40 @@
           Use <kbd>↑</kbd><kbd>↓</kbd> to move and <kbd>←</kbd><kbd>→</kbd> to turn in the view on the right. Drag on the minimap to teleport and aim.
         </div>
       </div><!-- #walkTheory -->
+
+      <!-- Wall Textures page switcher (Stop 6 only) - one tab, two pages -->
+      <div class="tpg-wrap" id="texPageSwitch" style="display:none">
+        <button class="tpg-btn" data-page="1" onclick="switchTexPage(1)">1. Texture Coordinate Math</button>
+        <button class="tpg-btn" data-page="2" onclick="switchTexPage(2)">2. Sampling &amp; Rendering</button>
+      </div>
+
+      <!-- Wall Textures / Page 2 theory (shown only while texPage === 2) -->
+      <div id="texPage2Theory" style="display:none">
+        <div class="step-header">
+          <div class="step-badge" style="background:var(--gold-soft);color:var(--gold);border-color:var(--gold)">Page 2</div>
+          <div class="step-title">Sampling &amp; Rendering</div>
+        </div>
+        <div class="explain-card" style="border-left-color:var(--gold)">
+          Page 1 derived <span class="ac">wallX</span>, a 0–1 coordinate along whichever wall face a ray hit. This page turns that single number into an actual pixel column pulled from a texture image, in a live demo you can walk around in - built the same way as Walk Mode (drag the minimap or use the arrow keys), just with texture sampling switched on.
+          <br><br>
+          <b>1. Load textures.</b> A handful of small images are prepared as offscreen canvases, one per named texture - no image files or build step needed, and any of them can be swapped in per map cell later.
+          <br><br>
+          <b>2. Pick a column.</b> <span class="or">texX = floor(wallX · texWidth)</span>, clamped to the texture's pixel width, selects a single 1px-wide vertical slice of source pixels.
+          <br><br>
+          <b>3. Flip when needed.</b> Rays approaching a face from opposite directions would otherwise sample it mirror-flipped; a small side/direction check keeps the texture's orientation consistent.
+          <br><br>
+          <b>4. Stretch and draw.</b> <span class="pu">ctx.drawImage(tex, texX, 0, 1, texHeight, col, top, colW, lineH)</span> draws that slice stretched to the wall's on-screen height - once per column, the same DDA-per-column loop Walk Mode runs, just kept in a separate demo here so Walk Mode itself stays flat-shaded.
+          <br><br>
+          <b>5. Fog on top.</b> The same distance-based darkening from Walk Mode is layered over the sampled pixels afterward, so textured and flat-shaded walls both read depth the same way.
+          <br><br>
+          <b>6. Fall back gracefully.</b> With "None" selected, this demo drops straight back to the flat-shaded rectangle - the exact same fallback path, exercised live.
+        </div>
+        <div class="chips">
+          <div class="chip c-s"><div class="chip-label">Sample width</div><div class="chip-val">1px column</div></div>
+          <div class="chip c-a"><div class="chip-label">Draws via</div><div class="chip-val">ctx.drawImage</div></div>
+          <div class="chip c-e"><div class="chip-label">Fallback</div><div class="chip-val">flat shading</div></div>
+        </div>
+      </div><!-- #texPage2Theory -->
 
     </aside>
 
@@ -281,6 +321,42 @@
         </div>
       </div>
 
+
+      <div class="sc" id="sc-textures">
+        <div class="sc-row" id="tex-page1-row">
+          <div class="sc-item"><label>Map</label>
+            <select id="tex-map" onchange="resetAll()">
+              <option value="simple">Simple Room</option>
+              <option value="maze">Maze</option>
+            </select>
+          </div>
+          <div class="sc-item"><label>Ray Angle θ</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="range" id="tex-angle" min="0" max="359" value="130" oninput="sv('tex-av',this.value+'°')">
+              <span class="sc-val" id="tex-av">130°</span>
+            </div>
+          </div>
+          <button class="btn primary" onclick="resetAll()">Apply</button>
+        </div>
+        <div class="sc-row" id="tex-page2-row" style="display:none">
+          <div class="sc-item"><label>Texture</label>
+            <select id="tex-select">
+              <option value="brick" selected>Brick</option>
+              <option value="stone">Stone</option>
+              <option value="wood">Wood</option>
+              <option value="none">None (flat shading)</option>
+            </select>
+          </div>
+          <div class="sc-item"><label>Map</label>
+            <select id="tex-demo-map" onchange="texDemoMapChanged()">
+              <option value="simple">Simple Room</option>
+              <option value="maze">Maze</option>
+            </select>
+          </div>
+          <span style="font-size:12px;color:var(--ink3)">Click the view below, then use <kbd>↑</kbd><kbd>↓</kbd> to move and <kbd>←</kbd><kbd>→</kbd> to turn - or drag the minimap to teleport and aim.</span>
+        </div>
+      </div>
+
       <!-- Walk mode: live first-person 3D raycasting -->
       <div id="walkWrap" style="display:none">
         <div class="walk-stage" id="w-focus" tabindex="0">
@@ -290,6 +366,22 @@
             <canvas id="w-map"></canvas>
           </div>
           <div class="walk-hint">This is what the DDA ray casts from every other tab look like rendered live, one vertical strip per ray, corrected for fisheye.</div>
+          <div class="walk-controls-hint">↑ forward &nbsp; ↓ back &nbsp; ← turn left &nbsp; → turn right</div>
+        </div>
+      </div>
+
+      <!-- Wall Textures / Page 2: a second, independent live demo built the
+           same way as Walk Mode - its own canvas, minimap, and movement -
+           except every wall is sampled from the chosen texture instead of
+           flat-shaded. Walk Mode itself is untouched. -->
+      <div id="texDemoWrap" style="display:none">
+        <div class="walk-stage" id="texd-focus" tabindex="0">
+          <canvas id="texd-3d"></canvas>
+          <div class="walk-map-wrap">
+            <div class="walk-map-label">Map</div>
+            <canvas id="texd-map"></canvas>
+          </div>
+          <div class="walk-hint">Same DDA-per-column renderer as Walk Mode, but each column now samples <span class="pu">drawImage()</span> from the texture picked on the left instead of a flat fill.</div>
           <div class="walk-controls-hint">↑ forward &nbsp; ↓ back &nbsp; ← turn left &nbsp; → turn right</div>
         </div>
       </div>

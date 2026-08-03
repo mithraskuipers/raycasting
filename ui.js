@@ -12,13 +12,19 @@ const charts = {};
    -> Multi-Ray (sweep that algorithm across a whole field of view, which is
    what makes the fisheye distortion show up) -> 3D Projection (explain and
    fix that distortion) -> Walk Mode (all four, live). */
-const MODES = ['vector', 'dda', 'multiray', 'projection', 'walk'];
-const MODE_LABELS = { vector: 'Vector Basics', dda: 'DDA Algorithm', multiray: 'Multi-Ray Casting', projection: '3D Projection', walk: 'Walk Mode' };
-const NEXT_MODE = { vector: 'dda', dda: 'multiray', multiray: 'projection', projection: 'walk', walk: null };
+const MODES = ['vector', 'dda', 'multiray', 'projection', 'walk', 'textures'];
+const MODE_LABELS = { vector: 'Vector Basics', dda: 'DDA Algorithm', multiray: 'Multi-Ray Casting', projection: '3D Projection', walk: 'Walk Mode', textures: 'Wall Textures' };
+const NEXT_MODE = { vector: 'dda', dda: 'multiray', multiray: 'projection', projection: 'walk', walk: 'textures', textures: null };
 
 /* Origin/player positions set by dragging on the top-down scenes.
    null means "use the mode's default / slider-driven position". */
 let vecOriginOverride = null, ddaPlayerOverride = null, mrPlayerOverride = null;
+
+/* Wall Textures stop (Stop 6) has two internal pages sharing one tab/
+   roadmap entry - texPage picks between them. Page 2 runs its own live
+   demo (texDemoState etc., defined in the Wall Textures section below);
+   Walk Mode itself stays untouched/flat-shaded. */
+let texPage = 1;
 
 /* ------------------------------------------------
    DOM utilities
@@ -54,7 +60,8 @@ function buildTableHead() {
   if (mode === 'vector') th.innerHTML = '<tr><th>Step</th><th>Concept</th><th>Details</th></tr>';
   else if (mode === 'dda') th.innerHTML = '<tr><th>Step</th><th>Cell (x,y)</th><th>Axis</th><th>t (distance)</th><th>Hit?</th></tr>';
   else if (mode === 'multiray') th.innerHTML = '<tr><th>Ray</th><th>Angle</th><th>Distance</th><th>Side</th></tr>';
-  else th.innerHTML = '<tr><th>Step</th><th>Ray / δ</th><th>Naive dist</th><th>Corrected dist</th></tr>';
+  else if (mode === 'projection') th.innerHTML = '<tr><th>Step</th><th>Ray / δ</th><th>Naive dist</th><th>Corrected dist</th></tr>';
+  else if (mode === 'textures') th.innerHTML = '<tr><th>Step</th><th>Concept</th><th>Details</th></tr>';
 }
 
 function makeRow(i) {
@@ -73,13 +80,16 @@ function makeRow(i) {
     if (i === 0) return `<td>—</td><td colspan="3" style="color:#8791a3">Setup: ${s.title}</td>`;
     const r = s.rays[i - 1];
     return `<td>${i}</td><td style="color:#a8710f">${(r.angle * 180 / Math.PI).toFixed(1)}°</td><td style="color:#157a5e">${r.dist.toFixed(2)}</td><td style="color:#2c4bdb">${r.side === 0 ? 'X' : 'Y'}</td>`;
-  } else {
+  } else if (mode === 'projection') {
     if (s.rayIndex !== undefined && s.rayIndex !== null) {
       const d = s.deltas[s.rayIndex];
       const correctedKnown = s.revealCorrected > s.rayIndex;
       return `<td>${i}</td><td style="color:#a8710f">Ray ${s.rayIndex + 1} · ${(d * 180 / Math.PI).toFixed(1)}°</td><td style="color:#c1382c">${s.naive[s.rayIndex].toFixed(2)}</td><td style="color:${correctedKnown ? '#157a5e' : '#8791a3'}">${correctedKnown ? s.corrected[s.rayIndex].toFixed(2) : '—'}</td>`;
     }
     return `<td>${i}</td><td colspan="3" style="color:#8791a3">${s.title || ''}</td>`;
+  } else {
+    const details = (s.chips || []).map(c => `${c[0]}: ${c[1]}`).join(' &nbsp;·&nbsp; ');
+    return `<td>${i}</td><td style="color:#2c4bdb;font-weight:600">${s.title || ''}</td><td style="color:#4c5468;font-size:12px">${details}</td>`;
   }
 }
 
@@ -203,23 +213,55 @@ function stopPlay() {
 function switchMode(m) {
   if (mode === 'walk' && m !== 'walk') stopWalkMode();
   mode = m;
+  if (m === 'textures') texPage = 1;
   document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', MODES[i] === m));
   document.querySelectorAll('.sc').forEach(el => el.classList.remove('active'));
   document.getElementById('sc-' + m).classList.add('active');
   refreshRoadmap();
-  toggleModeUI(m === 'walk');
+  toggleModeUI(m);
   if (m === 'walk') startWalkMode();
   else resetAll();
 }
 
-/* Show the step-by-step theory + scene UI, or the live Walk Mode
-   theory + canvas, never both. Left (theory) and right (viz) columns
-   are toggled together so each mode gets a matching pair. */
-function toggleModeUI(isWalk) {
-  document.getElementById('stepTheory').style.display = isWalk ? 'none' : '';
+/* Show the step-by-step theory + scene UI, the live Walk Mode theory +
+   canvas, or one of the two Wall Textures pages - never more than one
+   pairing at a time. Left (theory) and right (viz) columns are toggled
+   together so each mode/page gets a matching pair. */
+function toggleModeUI(m) {
+  const isWalk = m === 'walk';
+  const isTex = m === 'textures';
+  const texP2 = isTex && texPage === 2;
+
+  document.getElementById('stepTheory').style.display = (isWalk || texP2) ? 'none' : '';
   document.getElementById('walkTheory').style.display = isWalk ? '' : 'none';
-  document.getElementById('stepVizWrap').style.display = isWalk ? 'none' : '';
+  document.getElementById('texPage2Theory').style.display = texP2 ? '' : 'none';
+  document.getElementById('texPageSwitch').style.display = isTex ? '' : 'none';
+
+  document.getElementById('stepVizWrap').style.display = (isWalk || texP2) ? 'none' : '';
   document.getElementById('walkWrap').style.display = isWalk ? '' : 'none';
+  document.getElementById('texDemoWrap').style.display = texP2 ? '' : 'none';
+
+  const p1row = document.getElementById('tex-page1-row'), p2row = document.getElementById('tex-page2-row');
+  if (p1row) p1row.style.display = texP2 ? 'none' : '';
+  if (p2row) p2row.style.display = texP2 ? '' : 'none';
+
+  refreshTexPageButtons();
+  if (texP2) startTexDemo(); else stopTexDemo();
+}
+
+/* ------------------------------------------------
+   Wall Textures - Page switcher (Stop 6 only)
+   ------------------------------------------------ */
+function refreshTexPageButtons() {
+  document.querySelectorAll('.tpg-btn').forEach(b => {
+    b.classList.toggle('active', +b.dataset.page === texPage);
+  });
+}
+function switchTexPage(n) {
+  if (mode !== 'textures' || texPage === n) return;
+  texPage = n;
+  toggleModeUI('textures');
+  if (n === 1) { setupCharts(); updateUI(); }
 }
 
 /* preserveCur: keep the current step index (clamped) instead of jumping
@@ -235,8 +277,10 @@ function buildAndRender(preserveCur) {
     stepsData = buildDDA(gv('dda-map'), gc('dda-angle'), ddaPlayerOverride);
   } else if (mode === 'multiray') {
     stepsData = buildMultiRay(gv('mr-map'), gc('mr-fov'), gc('mr-rays'), gc('mr-angle'), mrPlayerOverride);
-  } else {
+  } else if (mode === 'projection') {
     stepsData = buildProjection(gc('proj-fov'), gc('proj-dist'), gc('proj-cols'));
+  } else if (mode === 'textures') {
+    stepsData = buildTexCoords(gv('tex-map'), gc('tex-angle'), null);
   }
   total = stepsData.length - 1;
   cur = preserveCur ? Math.min(prevCur, total) : 0;
@@ -274,7 +318,6 @@ document.addEventListener('keydown', e => {
    Reuses castRayDDA() from data-builders.js every
    animation frame instead of pre-baking steps.
    ================================================ */
-const walkKeys = {};
 let walkState = null, walkRAF = null, walkLastT = 0;
 
 function startWalkMode() {
@@ -298,7 +341,7 @@ function startWalkMode() {
 function stopWalkMode() {
   if (walkRAF) cancelAnimationFrame(walkRAF);
   walkRAF = null;
-  for (const k in walkKeys) walkKeys[k] = false;
+  for (const k in demoKeys) demoKeys[k] = false;
 }
 
 function walkFovChanged() { if (walkState) walkState.fov = gc('walk-fov') * Math.PI / 180; }
@@ -316,36 +359,91 @@ function walkBlocked(map, x, y) {
   return false;
 }
 
+/* Shared arrow-key movement/turning + wall collision, applied in place to
+   any {x,y,angle,map} state object. Used by both Walk Mode and the Wall
+   Textures live demo so moving around feels identical in both. */
+function applyMovement(state, dt) {
+  const moveSpeed = 2.6, turnSpeed = 2.6;
+  let { x, y, angle, map } = state;
+  if (demoKeys.ArrowLeft) angle -= turnSpeed * dt;
+  if (demoKeys.ArrowRight) angle += turnSpeed * dt;
+  let dx = 0, dy = 0;
+  if (demoKeys.ArrowUp) { dx += Math.cos(angle) * moveSpeed * dt; dy += Math.sin(angle) * moveSpeed * dt; }
+  if (demoKeys.ArrowDown) { dx -= Math.cos(angle) * moveSpeed * dt; dy -= Math.sin(angle) * moveSpeed * dt; }
+  if (dx || dy) {
+    if (!walkBlocked(map, x + dx, y)) x += dx;      // slide along walls on each axis
+    if (!walkBlocked(map, x, y + dy)) y += dy;      // independently rather than stopping dead
+  }
+  state.x = x; state.y = y; state.angle = angle;
+}
+
 function walkLoop(t) {
   walkRAF = requestAnimationFrame(walkLoop);
   if (!walkState) return;
   const now = t || performance.now();
   const dt = Math.min(0.05, (now - walkLastT) / 1000);
   walkLastT = now;
-
-  const moveSpeed = 2.6, turnSpeed = 2.6;
-  let { x, y, angle, map } = walkState;
-  if (walkKeys.ArrowLeft) angle -= turnSpeed * dt;
-  if (walkKeys.ArrowRight) angle += turnSpeed * dt;
-  let dx = 0, dy = 0;
-  if (walkKeys.ArrowUp) { dx += Math.cos(angle) * moveSpeed * dt; dy += Math.sin(angle) * moveSpeed * dt; }
-  if (walkKeys.ArrowDown) { dx -= Math.cos(angle) * moveSpeed * dt; dy -= Math.sin(angle) * moveSpeed * dt; }
-  if (dx || dy) {
-    if (!walkBlocked(map, x + dx, y)) x += dx;      // slide along walls on each axis
-    if (!walkBlocked(map, x, y + dy)) y += dy;      // independently rather than stopping dead
-  }
-  walkState.x = x; walkState.y = y; walkState.angle = angle;
+  if (mode === 'walk') applyMovement(walkState, dt);
   renderWalkScene(walkState);
 }
 
+/* Arrow keys drive whichever live demo is currently visible - Walk Mode or
+   the Wall Textures Page 2 demo - via one shared key-state object, since
+   the two are mutually exclusive (only one is ever on screen at a time). */
+const demoKeys = {};
 window.addEventListener('keydown', e => {
-  if (mode !== 'walk') return;
+  const demoActive = mode === 'walk' || (mode === 'textures' && texPage === 2);
+  if (!demoActive) return;
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
-    walkKeys[e.key] = true;
+    demoKeys[e.key] = true;
   }
 });
-window.addEventListener('keyup', e => { walkKeys[e.key] = false; });
+window.addEventListener('keyup', e => { demoKeys[e.key] = false; });
+
+/* ================================================
+   WALL TEXTURES - Page 2 live demo.
+   Built the same way as Walk Mode (its own RAF loop,
+   drag-the-minimap-to-teleport/aim, arrow keys to
+   move/turn) but sampling a texture onto every wall
+   instead of flat-shading it. Kept fully separate
+   from Walk Mode's own state so Walk Mode is
+   untouched.
+   ================================================ */
+let texDemoState = null, texDemoRAF = null, texDemoLastT = 0;
+
+function startTexDemo() {
+  stopTexDemo();
+  const mapKey = gv('tex-demo-map') || 'simple';
+  const map = MAPS[mapKey] || MAPS.simple;
+  texDemoState = { map, mapKey, x: 1.5, y: 1.5, angle: Math.PI / 4, fov: 66 * Math.PI / 180 };
+  findSpawn:
+  for (let ry = 1; ry < map.length - 1; ry++) {
+    for (let rx = 1; rx < map[0].length - 1; rx++) {
+      if (map[ry][rx] === '.') { texDemoState.x = rx + 0.5; texDemoState.y = ry + 0.5; break findSpawn; }
+    }
+  }
+  texDemoLastT = performance.now();
+  texDemoLoop(texDemoLastT);
+  const focus = document.getElementById('texd-focus');
+  if (focus) focus.focus();
+}
+function stopTexDemo() {
+  if (texDemoRAF) cancelAnimationFrame(texDemoRAF);
+  texDemoRAF = null;
+  for (const k in demoKeys) demoKeys[k] = false;
+}
+function texDemoMapChanged() { startTexDemo(); }
+
+function texDemoLoop(t) {
+  texDemoRAF = requestAnimationFrame(texDemoLoop);
+  if (!texDemoState) return;
+  const now = t || performance.now();
+  const dt = Math.min(0.05, (now - texDemoLastT) / 1000);
+  texDemoLastT = now;
+  if (mode === 'textures' && texPage === 2) applyMovement(texDemoState, dt);
+  renderTexDemoScene(texDemoState, gv('tex-select'));
+}
 
 /* ------------------------------------------------
    Keep canvases crisp on resize

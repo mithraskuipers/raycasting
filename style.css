@@ -273,6 +273,7 @@ input[type=range]{accent-color:var(--accent);width:110px;cursor:pointer}
   padding:16px;height:236px;display:flex;flex-direction:column;box-shadow:var(--shadow-xs);
 }
 .chart-box.wide{height:210px}
+.chart-box.tall{height:330px}
 .chart-box h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin-bottom:12px;flex-shrink:0;font-weight:600}
 .chart-box .chart-inner{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%!important;height:100%!important}
@@ -331,6 +332,17 @@ tr.cur:hover td{background:var(--accent-soft)}
 }
 .next-cta-text{font-size:13.5px;color:var(--ink2);font-weight:500}
 .next-cta-text b{color:var(--green)}
+
+/* ================= WALL TEXTURES PAGE SWITCH ================= */
+.tpg-wrap{display:flex;gap:8px;margin-bottom:16px}
+.tpg-btn{
+  flex:1;padding:10px 12px;border-radius:var(--radius);border:1px solid var(--border-strong);
+  background:var(--surface);color:var(--ink2);font-size:12.5px;font-weight:600;cursor:pointer;
+  transition:all .18s;letter-spacing:.01em;
+}
+.tpg-btn:hover{border-color:var(--gold);color:var(--gold);background:var(--gold-soft)}
+.tpg-btn.active{background:var(--gold);border-color:var(--gold);color:#fff}
+@media(max-width:480px){.tpg-wrap{flex-direction:column}}
 
 /* ================= WALK MODE ================= */
 .walk-stage{

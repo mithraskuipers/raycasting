@@ -91,11 +91,20 @@ function castRayDDA(map, px, py, angle) {
   const last = iterations[iterations.length - 1];
   const perpDist = last.t;
   const hitX = px + dirX * perpDist, hitY = py + dirY * perpDist;
+
+  // Fractional hit position along the wall face (Lodev-style texture u-coord).
+  // side=0 means we crossed a *vertical* grid line, so the face we hit runs
+  // top-to-bottom - its varying coordinate is Y, not X. side=1 is the mirror
+  // image: we crossed a *horizontal* line, so the face runs left-to-right and
+  // its varying coordinate is X. This is why side flips which axis feeds wallX.
+  let wallX = last.side === 0 ? (py + perpDist * dirY) : (px + perpDist * dirX);
+  wallX -= Math.floor(wallX); // keep only the fractional part -> 0..1 across the face
+
   return {
     px, py, angle, dirX, dirY, deltaDistX, deltaDistY, stepX, stepY,
     sideDistX0, sideDistY0, iterations,
     mapX: last.mapX, mapY: last.mapY, side: last.side,
-    perpDist, hitX, hitY
+    perpDist, hitX, hitY, wallX
   };
 }
 
@@ -219,6 +228,63 @@ function buildDDA(mapKey, angleDeg, playerOverride) {
     `A couple of stops from now, in 3D Projection, you'll see why the raw diagonal ray length gets distorted once many rays are fired at different angles - and why what we actually need is a "corrected" perpendicular distance instead. The good news: the last crossing distance here <b>is already</b> that corrected value - because we measured it along the grid axes instead of the raw diagonal. This single number decides how tall the wall is drawn.`,
     [['perpDist', res.perpDist.toFixed(3), 'c-e'], ['side', res.side === 0 ? 'X' : 'Y', 'c-q']],
     res.iterations.length);
+
+  return steps;
+}
+
+/* ------------------------------------------------
+   MODE 6 (Page 1) - Texture coordinate math: given
+   the DDA hit already found on the previous tab,
+   work out exactly where along that wall's face
+   (0..1) the ray landed - the "u" coordinate a
+   texture image gets sampled at.
+   ------------------------------------------------ */
+function buildTexCoords(mapKey, angleDeg, playerOverride) {
+  const map = MAPS[mapKey] || MAPS.simple;
+  const spawn = RAYCAST_SPAWN[mapKey] || RAYCAST_SPAWN.simple;
+  const px = playerOverride ? playerOverride.x : spawn.x, py = playerOverride ? playerOverride.y : spawn.y;
+  const angle = angleDeg * Math.PI / 180;
+  const res = castRayDDA(map, px, py, angle);
+  const sideAxis = res.side === 0 ? 'py' : 'px';
+  const sideDir = res.side === 0 ? 'dirY' : 'dirX';
+  const sideVal = res.side === 0 ? py : px;
+  const dirVal = res.side === 0 ? res.dirY : res.dirX;
+  const rawWallX = sideVal + res.perpDist * dirVal;
+
+  const steps = [];
+  const push = (title, formula, explain, chips, revealIdx) =>
+    steps.push({ title, formula, explain, chips, map, px, py, angle, res, revealIdx });
+
+  push('Recap: Where the Ray Hit',
+    `cell (${res.mapX}, ${res.mapY}) &nbsp;·&nbsp; side = ${res.side} &nbsp;·&nbsp; perpDist = ${res.perpDist.toFixed(3)}`,
+    `The DDA tab left us with a hit: which cell got hit, which axis was crossed to get there (side), and how far away it is (perpDist). That's enough to size a flat-shaded wall on screen - but not enough to texture it. To pick a texture pixel, we still need to know <em>where along that wall's face</em> the ray landed: dead-center, near one edge, near the other. That's the "u" coordinate this stop derives, usually called <b>wallX</b>.`,
+    [['Cell', `(${res.mapX}, ${res.mapY})`, 'c-s'], ['side', res.side, 'c-q'], ['perpDist', res.perpDist.toFixed(3), 'c-r']],
+    0);
+
+  push('Why side Flips the Coordinate',
+    `wallX = (side==0 ? py : px) + perpDist·(side==0 ? dirY : dirX)`,
+    `A grid cell has four faces, but only one was actually hit, and it's either a <em>vertical</em> face (a constant-X grid line, side=0) or a <em>horizontal</em> face (a constant-Y grid line, side=1). A vertical face runs top-to-bottom, so the coordinate that varies along it is Y - so side=0 reads from py and dirY. A horizontal face runs left-to-right, so the coordinate that varies is X - so side=1 reads from px and dirX. Get this flipped and textures come out sheared or scrolling the wrong way whenever a ray happens to hit the other kind of face.`,
+    [['This hit', res.side === 0 ? 'vertical face (side=0)' : 'horizontal face (side=1)', 'c-q'],
+     ['Reads from', sideAxis + ', ' + sideDir, 'c-a']],
+    1);
+
+  push('Computing wallX',
+    `wallX = ${sideAxis} + perpDist·${sideDir} = ${sideVal.toFixed(3)} + ${res.perpDist.toFixed(3)}·${dirVal.toFixed(3)} = ${rawWallX.toFixed(3)}`,
+    `Plugging in this ray's actual numbers: ${sideAxis} = ${sideVal.toFixed(3)}, perpDist = ${res.perpDist.toFixed(3)}, ${sideDir} = ${dirVal.toFixed(3)}. The result, ${rawWallX.toFixed(3)}, is a world-space coordinate that happens to run parallel to the wall face - it's not yet a clean 0..1 range, since it inherits whatever integer cell the face sits in.`,
+    [['Raw wallX', rawWallX.toFixed(3), 'c-r']],
+    2);
+
+  push('Wrapping to a 0–1 U-Coordinate',
+    `wallX -= Math.floor(wallX) &nbsp;→&nbsp; ${res.wallX.toFixed(3)}`,
+    `Dropping the integer part leaves only the fractional position across <em>this one</em> face, always in [0, 1) - 0 at one edge of the cell, approaching 1 at the other. That's exactly the domain a texture image's horizontal axis is sampled over, and it's also why textures tile seamlessly from one wall cell to the next: every face wraps through the same 0..1 range regardless of which cell it belongs to.`,
+    [['wallX (u)', res.wallX.toFixed(3), 'c-e']],
+    3);
+
+  push('The Texture Strip',
+    `texX = floor(wallX · texWidth)`,
+    `Multiplying wallX by a texture's pixel width and flooring it picks a single column of source pixels - this is the "u" coordinate a sampler uses. The strip below stretches the wall's hit face out flat, 0 on the left to 1 on the right, with a marker at wallX = ${res.wallX.toFixed(3)} showing exactly where this ray's slice would be cut from a texture image.`,
+    [['wallX', res.wallX.toFixed(3), 'c-e'], ['texX (128px tex)', Math.min(127, Math.floor(res.wallX * 128)), 'c-e']],
+    4);
 
   return steps;
 }

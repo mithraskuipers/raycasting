@@ -141,7 +141,7 @@ function setupCharts() {
       </div>
       <div class="chart-box wide"><h4>Depth Buffer - corrected distance per ray</h4><div class="chart-inner"><canvas id="m-depth"></canvas></div></div>`;
     bindMultiRayDrag();
-  } else {
+  } else if (mode === 'projection') {
     area.innerHTML = `
       <div class="scene-box" style="margin-bottom:12px"><canvas id="p-top"></canvas></div>
       <div class="chart-grid cols-2" style="margin-bottom:12px">
@@ -150,6 +150,16 @@ function setupCharts() {
       </div>
       <div class="chart-box wide"><h4>Distance vs. Ray Angle</h4><div class="chart-inner"><canvas id="p-chart"></canvas></div></div>`;
     bindProjectionDrag();
+  } else if (mode === 'textures') {
+    if (texPage === 1) {
+      area.innerHTML = `
+        <div class="scene-grid">
+          <div class="scene-box tall"><canvas id="tc-grid"></canvas></div>
+          <div class="chart-box tall"><h4>Wall Face U-Coordinate (wallX, 0 → 1)</h4><div class="chart-inner"><canvas id="tc-strip"></canvas></div></div>
+        </div>`;
+    } else {
+      area.innerHTML = '';
+    }
   }
 }
 
@@ -331,7 +341,8 @@ function renderCharts() {
   if (mode === 'vector') renderVectorScene(s);
   else if (mode === 'dda') renderDDAScene(s);
   else if (mode === 'multiray') renderMultiRayScene(s);
-  else renderProjectionScene(s);
+  else if (mode === 'projection') renderProjectionScene(s);
+  else if (mode === 'textures' && texPage === 1) renderTexCoordScene(s);
 }
 
 /* ------------------------------------------------
@@ -646,6 +657,76 @@ function renderProjectionScene(s) {
 }
 
 /* ------------------------------------------------
+   MODE 6 (Page 1) - texture coordinate math: the
+   same DDA grid from before, plus a strip showing
+   exactly where along the hit face wallX landed.
+   ------------------------------------------------ */
+function renderTexCoordScene(s) {
+  const p = prepCanvas('tc-grid');
+  if (p) {
+    const { ctx, w, h } = p;
+    clearScene(ctx, w, h);
+    const g = fitGrid(s.map, w, h);
+    drawGridCells(ctx, s.map, g);
+
+    // Full ray path, already known from the DDA tab - this stop starts
+    // from a completed hit rather than replaying the walk step by step.
+    let x0 = s.px, y0 = s.py;
+    s.res.iterations.forEach(it => {
+      const x1 = s.px + s.res.dirX * it.t, y1 = s.py + s.res.dirY * it.t;
+      highlightCell(ctx, it.mapX, it.mapY, g, it.isWall ? 'rgba(193,56,44,.16)' : 'rgba(44,75,219,.1)');
+      drawRayLine(ctx, x0, y0, x1, y1, g.ox, g.oy, g.cell, it.isWall ? '#c1382c' : '#2c4bdb', 2);
+      x0 = x1; y0 = y1;
+    });
+    drawPlayer(ctx, s.px, s.py, s.angle, g.ox, g.oy, g.cell);
+
+    // Highlight the exact wall face that got hit (the grid edge, not the
+    // whole cell) once the "why side flips" step has been reached.
+    if (s.revealIdx >= 1) {
+      const { mapX, mapY, side } = s.res;
+      ctx.save();
+      ctx.strokeStyle = '#bb5620'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath();
+      if (side === 0) {
+        // vertical face: left edge if we stepped in +X, right edge if -X
+        const edgeX = g.ox + (s.res.stepX > 0 ? mapX : mapX + 1) * g.cell;
+        ctx.moveTo(edgeX, g.oy + mapY * g.cell); ctx.lineTo(edgeX, g.oy + (mapY + 1) * g.cell);
+      } else {
+        const edgeY = g.oy + (s.res.stepY > 0 ? mapY : mapY + 1) * g.cell;
+        ctx.moveTo(g.ox + mapX * g.cell, edgeY); ctx.lineTo(g.ox + (mapX + 1) * g.cell, edgeY);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (s.revealIdx >= 0) drawPoint(ctx, s.res.hitX, s.res.hitY, g.ox, g.oy, g.cell, '#c1382c', 6);
+  }
+
+  const strip = prepCanvas('tc-strip');
+  if (strip) {
+    const { ctx, w, h } = strip;
+    clearScene(ctx, w, h);
+    ctx.fillStyle = '#0f1526'; ctx.fillRect(0, 0, w, h);
+    const pad = 14;
+    const barY = h / 2 - 20, barH = 40;
+    ctx.fillStyle = '#1c2540'; ctx.fillRect(pad, barY, w - pad * 2, barH);
+    ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 1; ctx.strokeRect(pad, barY, w - pad * 2, barH);
+    label(ctx, '0', pad, barY - 8, '#8a93ad', 11);
+    label(ctx, '1', w - pad - 6, barY - 8, '#8a93ad', 11);
+    if (s.revealIdx >= 4) {
+      const mx = pad + s.res.wallX * (w - pad * 2);
+      ctx.fillStyle = 'rgba(224,101,90,.28)'; ctx.fillRect(pad, barY, mx - pad, barH);
+      ctx.strokeStyle = '#e0655a'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(mx, barY - 6); ctx.lineTo(mx, barY + barH + 6); ctx.stroke();
+      label(ctx, 'wallX = ' + s.res.wallX.toFixed(3), Math.min(w - pad - 110, Math.max(pad, mx - 55)), barY + barH + 22, '#e0655a', 12);
+    } else if (s.revealIdx >= 2) {
+      label(ctx, 'wallX not wrapped to 0–1 yet…', pad, barY + barH + 22, '#5b6684', 11.5);
+    } else {
+      label(ctx, 'strip revealed once wallX is computed', pad, barY + barH + 22, '#5b6684', 11.5);
+    }
+  }
+}
+
+/* ------------------------------------------------
    WALK MODE - live first-person raycasting.
    Casts one DDA ray per screen column every frame,
    corrects each for fisheye against the view axis
@@ -660,14 +741,7 @@ function renderWalkScene(ws) {
 function renderWalk3D(ws) {
   const p = prepCanvas('w-3d'); if (!p) return;
   const { ctx, w, h } = p;
-
-  // Ceiling / floor gradient
-  const skyGrad = ctx.createLinearGradient(0, 0, 0, h / 2);
-  skyGrad.addColorStop(0, '#0f1526'); skyGrad.addColorStop(1, '#161f38');
-  ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, w, h / 2);
-  const floorGrad = ctx.createLinearGradient(0, h / 2, 0, h);
-  floorGrad.addColorStop(0, '#171f2f'); floorGrad.addColorStop(1, '#0a0e18');
-  ctx.fillStyle = floorGrad; ctx.fillRect(0, h / 2, w, h / 2);
+  drawSkyFloor(ctx, w, h);
 
   const numCols = Math.max(90, Math.min(280, Math.floor(w / 3)));
   const colW = w / numCols;
@@ -684,37 +758,161 @@ function renderWalk3D(ws) {
   }
 }
 
-/* Minimap in Walk Mode drives the live player state directly - no
-   preview/commit split needed since the animation loop redraws every
-   frame anyway. Click to teleport, drag to set facing direction. */
-let walkMapDragging = false, walkMapStartX = 0, walkMapStartY = 0;
-function bindWalkMapDrag() {
-  const el = document.getElementById('w-map');
+/* ------------------------------------------------
+   Procedural wall textures - small offscreen
+   canvases keyed by name, generated once and
+   cached. No image assets/build step required.
+   Keying by name (rather than only map cell value)
+   leaves room to map different '#' characters to
+   different textures later without changing callers.
+   Used only by the Wall Textures stop's own demo -
+   Walk Mode itself stays flat-shaded, as before.
+   ------------------------------------------------ */
+const TEX_SIZE = 64;
+const textureCache = {};
+function buildProceduralTexture(key) {
+  const c = document.createElement('canvas');
+  c.width = TEX_SIZE; c.height = TEX_SIZE;
+  const ctx = c.getContext('2d');
+  if (key === 'brick') {
+    ctx.fillStyle = '#8a4a3a'; ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+    ctx.strokeStyle = 'rgba(20,10,8,.55)'; ctx.lineWidth = 2;
+    const rowH = TEX_SIZE / 4;
+    for (let r = 0; r <= 4; r++) { ctx.beginPath(); ctx.moveTo(0, r * rowH); ctx.lineTo(TEX_SIZE, r * rowH); ctx.stroke(); }
+    for (let r = 0; r < 4; r++) {
+      const offset = (r % 2) * (TEX_SIZE / 4);
+      for (let cx = -TEX_SIZE / 4; cx <= TEX_SIZE + TEX_SIZE / 4; cx += TEX_SIZE / 2) {
+        ctx.beginPath(); ctx.moveTo(cx + offset, r * rowH); ctx.lineTo(cx + offset, (r + 1) * rowH); ctx.stroke();
+      }
+    }
+  } else if (key === 'stone') {
+    ctx.fillStyle = '#5b6070'; ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+    for (let i = 0; i < 26; i++) {
+      const rx = Math.random() * TEX_SIZE, ry = Math.random() * TEX_SIZE, rr = 2 + Math.random() * 5;
+      ctx.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.12)';
+      ctx.beginPath(); ctx.arc(rx, ry, rr, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath(); ctx.moveTo(Math.random() * TEX_SIZE, 0); ctx.lineTo(Math.random() * TEX_SIZE, TEX_SIZE); ctx.stroke();
+    }
+  } else if (key === 'wood') {
+    ctx.fillStyle = '#7a5230'; ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+    for (let cx = 0; cx < TEX_SIZE; cx += TEX_SIZE / 5) {
+      ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(cx, 0, 2, TEX_SIZE);
+    }
+    ctx.strokeStyle = 'rgba(255,220,180,.12)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i++) {
+      const y = Math.random() * TEX_SIZE;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(TEX_SIZE, y + (Math.random() - 0.5) * 6); ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = '#5c82ff'; ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+  }
+  return c;
+}
+function getTexture(key) {
+  if (!key || key === 'none') return null;
+  if (!textureCache[key]) textureCache[key] = buildProceduralTexture(key);
+  return textureCache[key];
+}
+
+function drawSkyFloor(ctx, w, h) {
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, h / 2);
+  skyGrad.addColorStop(0, '#0f1526'); skyGrad.addColorStop(1, '#161f38');
+  ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, w, h / 2);
+  const floorGrad = ctx.createLinearGradient(0, h / 2, 0, h);
+  floorGrad.addColorStop(0, '#171f2f'); floorGrad.addColorStop(1, '#0a0e18');
+  ctx.fillStyle = floorGrad; ctx.fillRect(0, h / 2, w, h / 2);
+}
+
+/* Textured first-person column caster/drawer - same one-DDA-ray-per-column,
+   fisheye-corrected loop Walk Mode uses, but samples a texture (drawImage a
+   1px-wide slice stretched to the wall's screen height) instead of a flat
+   fill, with a flat-shaded fallback when no texture is selected/loaded.
+   Only used by the Wall Textures demo below - kept separate from
+   renderWalk3D so Walk Mode's own rendering is untouched. */
+function drawTexturedColumns(ctx, w, h, map, px, py, angle, fov, texKey) {
+  const tex = getTexture(texKey);
+  const numCols = Math.max(90, Math.min(280, Math.floor(w / 3)));
+  const colW = w / numCols;
+  for (let i = 0; i < numCols; i++) {
+    const rayAngle = angle - fov / 2 + (numCols > 1 ? (i / (numCols - 1)) * fov : 0);
+    const res = castRayDDA(map, px, py, rayAngle);
+    const dist = Math.max(0.08, res.perpDist * Math.cos(rayAngle - angle));
+    const lineH = Math.min(h * 2.2, h / dist);
+    const fog = Math.max(0.16, 1 - dist / 13);
+    const top = (h - lineH) / 2;
+    if (tex) {
+      let texX = Math.floor(res.wallX * tex.width);
+      texX = Math.max(0, Math.min(tex.width - 1, texX));
+      // Mirror fix: keeps the texture's orientation consistent instead of
+      // flipping every time the ray happens to approach from the other side.
+      if ((res.side === 0 && res.dirX > 0) || (res.side === 1 && res.dirY < 0)) texX = tex.width - 1 - texX;
+      ctx.drawImage(tex, texX, 0, 1, tex.height, i * colW, top, colW + 1, lineH);
+      // Distance darkening on top of the sampled pixels, same fog Walk Mode
+      // uses, so textured walls still read depth correctly.
+      ctx.fillStyle = `rgba(8,11,20,${Math.max(0, 1 - fog).toFixed(2)})`;
+      ctx.fillRect(i * colW, top, colW + 1, lineH);
+    } else {
+      const base = res.side === 0 ? [92, 130, 255] : [64, 96, 220];
+      ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${fog.toFixed(2)})`;
+      ctx.fillRect(i * colW, top, colW + 1, lineH);
+    }
+  }
+}
+
+/* ------------------------------------------------
+   MODE 6 (Page 2) - a live, moveable 3D demo, built
+   the same way as Walk Mode (drag the minimap to
+   teleport/aim, arrow keys to move/turn) but with a
+   texture sampled onto every wall.
+   ------------------------------------------------ */
+function renderTexDemoScene(ts, texKey) {
+  const p = prepCanvas('texd-3d');
+  if (p) {
+    const { ctx, w, h } = p;
+    drawSkyFloor(ctx, w, h);
+    drawTexturedColumns(ctx, w, h, ts.map, ts.x, ts.y, ts.angle, ts.fov, texKey);
+  }
+  renderMinimapInto('texd-map', ts, '#e0655a');
+}
+
+/* ------------------------------------------------
+   Shared minimap: click/drag to teleport and aim.
+   Generalized so both Walk Mode and the Wall
+   Textures demo can drive their own live state
+   through the same interaction code.
+   ------------------------------------------------ */
+function bindMinimapDrag(elId, getState) {
+  const el = document.getElementById(elId);
   if (!el) return;
+  let dragging = false, startX = 0, startY = 0;
   function toWorld(e) {
     const rect = el.getBoundingClientRect();
     const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
     const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-    const g = fitGrid(walkState.map, rect.width, rect.height, 6);
+    const st = getState();
+    const g = fitGrid(st.map, rect.width, rect.height, 6);
     return { x: (cx - g.ox) / g.cell, y: (cy - g.oy) / g.cell };
   }
   function begin(e) {
-    if (!walkState) return;
+    const st = getState(); if (!st) return;
     e.preventDefault();
-    walkMapDragging = true;
+    dragging = true;
     const { x, y } = toWorld(e);
-    walkMapStartX = Math.min(walkState.map[0].length - 0.1, Math.max(0.1, x));
-    walkMapStartY = Math.min(walkState.map.length - 0.1, Math.max(0.1, y));
-    walkState.x = walkMapStartX; walkState.y = walkMapStartY;
+    startX = Math.min(st.map[0].length - 0.1, Math.max(0.1, x));
+    startY = Math.min(st.map.length - 0.1, Math.max(0.1, y));
+    st.x = startX; st.y = startY;
   }
   function move(e) {
-    if (!walkMapDragging || !walkState) return;
+    const st = getState(); if (!dragging || !st) return;
     e.preventDefault();
     const { x, y } = toWorld(e);
-    const dx = x - walkMapStartX, dy = y - walkMapStartY;
-    if (Math.hypot(dx, dy) > 0.15) walkState.angle = Math.atan2(dy, dx);
+    const dx = x - startX, dy = y - startY;
+    if (Math.hypot(dx, dy) > 0.15) st.angle = Math.atan2(dy, dx);
   }
-  function end() { walkMapDragging = false; }
+  function end() { dragging = false; }
   el.addEventListener('mousedown', begin);
   el.addEventListener('touchstart', begin, { passive: false });
   document.addEventListener('mousemove', move);
@@ -722,9 +920,14 @@ function bindWalkMapDrag() {
   document.addEventListener('mouseup', end);
   document.addEventListener('touchend', end);
 }
+/* Binds both minimaps in one call - invoked once at boot. */
+function bindWalkMapDrag() {
+  bindMinimapDrag('w-map', () => walkState);
+  bindMinimapDrag('texd-map', () => texDemoState);
+}
 
-function renderWalkMinimap(ws) {
-  const p = prepCanvas('w-map'); if (!p) return;
+function renderMinimapInto(canvasId, ws, playerColor) {
+  const p = prepCanvas(canvasId); if (!p) return;
   const { ctx, w, h } = p;
   clearScene(ctx, w, h);
   const g = fitGrid(ws.map, w, h, 6);
@@ -740,5 +943,7 @@ function renderWalkMinimap(ws) {
   ctx.fillStyle = 'rgba(92,130,255,.18)'; ctx.fill();
   ctx.restore();
 
-  drawPlayer(ctx, ws.x, ws.y, ws.angle, g.ox, g.oy, g.cell, '#5c82ff');
+  drawPlayer(ctx, ws.x, ws.y, ws.angle, g.ox, g.oy, g.cell, playerColor);
 }
+
+function renderWalkMinimap(ws) { renderMinimapInto('w-map', ws, '#5c82ff'); }
