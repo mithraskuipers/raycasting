@@ -1,5 +1,9 @@
 /* ------------------------------------------------
-   Maps - grids of '#' (wall) and '.' (open floor)
+   Maps - grids of wall characters and '.' (open
+   floor). '#' is the default wall; any other
+   non-'.' character is also a wall, and can carry
+   its own texture identity via WALL_TEXTURES below
+   (see 'multitex', used by the Wall Textures demo).
    ------------------------------------------------ */
 const MAPS = {
   simple: [
@@ -25,8 +29,35 @@ const MAPS = {
     "#......#.#",
     "#.######.#",
     "##########"
+  ],
+  // Same footprint as 'simple', but the wall ring and interior dividers
+  // are deliberately built from three different characters so every wall
+  // face doesn't have to look the same material.
+  multitex: [
+    "1111222222",
+    "1........2",
+    "1..33....2",
+    "1..3.....2",
+    "1........2",
+    "3.....11.2",
+    "3.....1..2",
+    "1........2",
+    "1........2",
+    "1111222233"
   ]
 };
+
+/* ------------------------------------------------
+   Which texture each wall character samples from,
+   read by the Wall Textures demo's "Multi (per
+   wall)" mode. '#' (and anything not listed here)
+   falls back to 'brick'. Authoring more wall variety
+   is just adding a character to a map string and an
+   entry here - castRayDDA doesn't need to change,
+   since it already treats any non-'.' cell as a wall
+   regardless of which character it is.
+   ------------------------------------------------ */
+const WALL_TEXTURES = { '#': 'brick', '1': 'brick', '2': 'stone', '3': 'wood' };
 
 /* ------------------------------------------------
    Default spawn points for the DDA and Multi-Ray
@@ -36,8 +67,9 @@ const MAPS = {
    almost immediately.
    ------------------------------------------------ */
 const RAYCAST_SPAWN = {
-  simple: { x: 4.5, y: 4.5 },
-  maze:   { x: 3.5, y: 5.5 }
+  simple:   { x: 4.5, y: 4.5 },
+  maze:     { x: 3.5, y: 5.5 },
+  multitex: { x: 4.5, y: 4.5 }
 };
 
 /* ------------------------------------------------
@@ -84,7 +116,7 @@ function castRayDDA(map, px, py, angle) {
     if (sideDistX < sideDistY) { t = sideDistX; axis = 'X'; side = 0; sideDistX += deltaDistX; mapX += stepX; }
     else { t = sideDistY; axis = 'Y'; side = 1; sideDistY += deltaDistY; mapY += stepY; }
     const outOfBounds = mapX < 0 || mapX >= cols || mapY < 0 || mapY >= rows;
-    const isWall = !outOfBounds && map[mapY][mapX] === '#';
+    const isWall = !outOfBounds && map[mapY][mapX] !== '.';
     iterations.push({ t, mapX, mapY, axis, side, sideDistX, sideDistY, isWall, outOfBounds });
     if (isWall || outOfBounds) hit = true;
   }

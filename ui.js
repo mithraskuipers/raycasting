@@ -246,7 +246,7 @@ function toggleModeUI(m) {
   if (p2row) p2row.style.display = texP2 ? '' : 'none';
 
   refreshTexPageButtons();
-  if (texP2) startTexDemo(); else stopTexDemo();
+  if (texP2) { startTexDemo(); texDemoTextureChanged(); } else stopTexDemo();
 }
 
 /* ------------------------------------------------
@@ -354,7 +354,7 @@ function walkBlocked(map, x, y) {
   for (const [cx, cy] of pts) {
     const mx = Math.floor(cx), my = Math.floor(cy);
     if (my < 0 || my >= map.length || mx < 0 || mx >= map[0].length) return true;
-    if (map[my][mx] === '#') return true;
+    if (map[my][mx] !== '.') return true;
   }
   return false;
 }
@@ -434,6 +434,10 @@ function stopTexDemo() {
   for (const k in demoKeys) demoKeys[k] = false;
 }
 function texDemoMapChanged() { startTexDemo(); }
+function texDemoTextureChanged() {
+  const row = document.getElementById('tex-multi-hint-row');
+  if (row) row.style.display = (gv('tex-select') === 'multi') ? '' : 'none';
+}
 
 function texDemoLoop(t) {
   texDemoRAF = requestAnimationFrame(texDemoLoop);

@@ -176,7 +176,7 @@
         <div class="explain-card" style="border-left-color:var(--gold)">
           Page 1 derived <span class="ac">wallX</span>, a 0–1 coordinate along whichever wall face a ray hit. This page turns that single number into an actual pixel column pulled from a texture image, in a live demo you can walk around in - built the same way as Walk Mode (drag the minimap or use the arrow keys), just with texture sampling switched on.
           <br><br>
-          <b>1. Load textures.</b> A handful of small images are prepared as offscreen canvases, one per named texture - no image files or build step needed, and any of them can be swapped in per map cell later.
+          <b>1. Load textures.</b> A handful of small images are prepared as offscreen canvases, one per named texture - no image files or build step needed.
           <br><br>
           <b>2. Pick a column.</b> <span class="or">texX = floor(wallX · texWidth)</span>, clamped to the texture's pixel width, selects a single 1px-wide vertical slice of source pixels.
           <br><br>
@@ -187,11 +187,14 @@
           <b>5. Fog on top.</b> The same distance-based darkening from Walk Mode is layered over the sampled pixels afterward, so textured and flat-shaded walls both read depth the same way.
           <br><br>
           <b>6. Fall back gracefully.</b> With "None" selected, this demo drops straight back to the flat-shaded rectangle - the exact same fallback path, exercised live.
+          <br><br>
+          <b>7. One texture per wall character.</b> So far every wall in the demo shares one texture. Real levels usually want variety - a stone corridor, a wooden door, a brick facade - without hand-coding which wall is which. The trick is that <span class="ac">castRayDDA</span> already tells us exactly which map cell got hit (<span class="or">res.mapX, res.mapY</span>); all that's needed is a lookup from the character at that cell to a texture name: <span class="or">WALL_TEXTURES = { '#': 'brick', '1': 'brick', '2': 'stone', '3': 'wood' }</span>. Selecting <b>Multi</b> in the dropdown switches the sampler from "always use this texture" to "look up <span class="or">WALL_TEXTURES[map[res.mapY][res.mapX]]</span> per column" - so a single frame can mix materials freely, one map character at a time. The <b>Multi-Texture Room</b> map exists purely to show this off: its wall ring and dividers are built from three different characters instead of one.
         </div>
         <div class="chips">
           <div class="chip c-s"><div class="chip-label">Sample width</div><div class="chip-val">1px column</div></div>
           <div class="chip c-a"><div class="chip-label">Draws via</div><div class="chip-val">ctx.drawImage</div></div>
           <div class="chip c-e"><div class="chip-label">Fallback</div><div class="chip-val">flat shading</div></div>
+          <div class="chip c-r"><div class="chip-label">Per-wall lookup</div><div class="chip-val">WALL_TEXTURES[ch]</div></div>
         </div>
       </div><!-- #texPage2Theory -->
 
@@ -340,10 +343,11 @@
         </div>
         <div class="sc-row" id="tex-page2-row" style="display:none">
           <div class="sc-item"><label>Texture</label>
-            <select id="tex-select">
-              <option value="brick" selected>Brick</option>
+            <select id="tex-select" onchange="texDemoTextureChanged()">
+              <option value="brick">Brick</option>
               <option value="stone">Stone</option>
               <option value="wood">Wood</option>
+              <option value="multi" selected>Multi (per wall)</option>
               <option value="none">None (flat shading)</option>
             </select>
           </div>
@@ -351,9 +355,19 @@
             <select id="tex-demo-map" onchange="texDemoMapChanged()">
               <option value="simple">Simple Room</option>
               <option value="maze">Maze</option>
+              <option value="multitex" selected>Multi-Texture Room</option>
             </select>
           </div>
           <span style="font-size:12px;color:var(--ink3)">Click the view below, then use <kbd>↑</kbd><kbd>↓</kbd> to move and <kbd>←</kbd><kbd>→</kbd> to turn - or drag the minimap to teleport and aim.</span>
+        </div>
+        <div class="sc-row" id="tex-multi-hint-row" style="padding-top:0">
+          <span class="sc-hint" style="margin-top:0">
+            <b>Multi</b> samples each wall's own texture straight from the map character it's built from:
+            <span class="chip-inline" style="background:#8a4a3a1a;color:#8a4a3a;border-color:#8a4a3a55">1 → Brick</span>
+            <span class="chip-inline" style="background:#5b60701a;color:#5b6070;border-color:#5b607055">2 → Stone</span>
+            <span class="chip-inline" style="background:#7a52301a;color:#7a5230;border-color:#7a523055">3 → Wood</span>
+            — try it on the Multi-Texture Room map.
+          </span>
         </div>
       </div>
 

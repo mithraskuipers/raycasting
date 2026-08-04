@@ -71,7 +71,7 @@ function fitGrid(map, w, h, pad) {
 }
 function drawGridCells(ctx, map, g, dark) {
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
-    const isWall = map[r][c] === '#';
+    const isWall = map[r][c] !== '.';
     ctx.fillStyle = dark ? (isWall ? '#26314f' : '#131a30') : (isWall ? '#3a4356' : '#f7f8fb');
     ctx.fillRect(g.ox + c * g.cell, g.oy + r * g.cell, g.cell, g.cell);
     ctx.strokeStyle = dark ? 'rgba(255,255,255,.07)' : 'rgba(18,23,43,.09)';
@@ -830,10 +830,15 @@ function drawSkyFloor(ctx, w, h) {
    fisheye-corrected loop Walk Mode uses, but samples a texture (drawImage a
    1px-wide slice stretched to the wall's screen height) instead of a flat
    fill, with a flat-shaded fallback when no texture is selected/loaded.
+   texKey is either a fixed texture name (every wall looks the same) or
+   'multi', which looks up a per-wall texture via WALL_TEXTURES keyed by
+   the actual character the ray hit in the map - so a map that mixes wall
+   characters ('#', '1', '2'...) can render each with its own material.
    Only used by the Wall Textures demo below - kept separate from
    renderWalk3D so Walk Mode's own rendering is untouched. */
 function drawTexturedColumns(ctx, w, h, map, px, py, angle, fov, texKey) {
-  const tex = getTexture(texKey);
+  const isMulti = texKey === 'multi';
+  const fixedTex = isMulti ? null : getTexture(texKey);
   const numCols = Math.max(90, Math.min(280, Math.floor(w / 3)));
   const colW = w / numCols;
   for (let i = 0; i < numCols; i++) {
@@ -843,6 +848,9 @@ function drawTexturedColumns(ctx, w, h, map, px, py, angle, fov, texKey) {
     const lineH = Math.min(h * 2.2, h / dist);
     const fog = Math.max(0.16, 1 - dist / 13);
     const top = (h - lineH) / 2;
+    const tex = isMulti
+      ? getTexture((WALL_TEXTURES[map[res.mapY][res.mapX]]) || 'brick')
+      : fixedTex;
     if (tex) {
       let texX = Math.floor(res.wallX * tex.width);
       texX = Math.max(0, Math.min(tex.width - 1, texX));
